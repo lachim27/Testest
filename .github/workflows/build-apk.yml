@@ -1,24 +1,33 @@
+
+name: ZlapEgzamin Android APK
+
+'on':
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Pobierz pliki
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Budowanie APK
+      - name: Build APK
         run: gradle assembleDebug --no-daemon
 
-      - name: Zapisz APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ZlapEgzamin-APK
