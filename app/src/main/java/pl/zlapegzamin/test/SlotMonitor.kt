@@ -236,7 +236,7 @@ class SlotMonitor(
             lastError = "Włącz powiadomienia ZłapEgzamin w ustawieniach Androida."
             return
         }
-        val intent = Intent(activity, MainActivity::class.java).apply {
+        val intent = Intent(activity, DashboardActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("open_portal", true)
         }
