@@ -5,6 +5,7 @@
   'use strict';
   if (window.__zlapHookV3) return;
   window.__zlapHookV3 = true;
+  send({kind:'hook'});
   var saved = null, running = false;
   var endpoint = /\/Schedules\/user\/OneCenterExam(?:[?#]|$)/i;
   function send(obj) {
@@ -29,7 +30,15 @@
     } catch (_) { return false; }
   }
   function remember(url, body) {
-    if (!isTarget(url) || typeof body !== 'string' || !selected(body)) return false;
+    if (!isTarget(url)) return false;
+    send({kind:'endpoint'});
+    if (typeof body !== 'string') { send({kind:'body', detail:'not-text'}); return false; }
+    if (!selected(body)) {
+      var fields = [];
+      try { fields = Object.keys(JSON.parse(body)).filter(function(k){ return /organization|category|exam|center|type/i.test(k); }).slice(0,12); } catch (_) {}
+      send({kind:'filter', fields:fields});
+      return false;
+    }
     var resolved = new URL(String(url), location.href).href;
     var wasReady = !!saved;
     saved = {url: resolved, body: body};
@@ -38,6 +47,7 @@
   }
   function process(url, status, raw, retryAfter) {
     if (!isTarget(url)) return;
+    send({kind:'response', status:status});
     if (status === 429) {
       send({kind:'rate', retryAfter: String(retryAfter || '').slice(0, 120)});
       return;
@@ -53,7 +63,7 @@
     try {
       var data = typeof raw === 'string' ? JSON.parse(raw) : raw;
       if (!data || !Array.isArray(data.examCollectionForDay)) {
-        send({kind:'format'});
+        send({kind:'format', fields: data && typeof data === 'object' ? Object.keys(data).slice(0,12) : []});
         return;
       }
       var slots = [];
