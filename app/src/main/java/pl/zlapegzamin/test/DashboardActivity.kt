@@ -243,6 +243,13 @@ class DashboardActivity : Activity() {
         put(preferences, info("Rodzaj", "Praktyczny"))
         put(page, preferences, 19)
 
+        val debug = card()
+        put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(debug, text(monitor.diagnostics, 14f, muted), 12)
+        put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
+        put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
+        put(page, debug, 19)
+
         val alerts = card()
         put(alerts, text("POWIADOMIENIA NA TELEFONIE", 12f, Color.rgb(143, 182, 255), true), 12)
         put(alerts, text("Domyślnie pierwszy prawdziwy odczyt ustala listę znanych terminów.", 14f, muted), 14)
