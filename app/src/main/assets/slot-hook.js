@@ -84,19 +84,24 @@
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       var body = init && init.body;
-      if (isTarget(url)) {
-        if (typeof body === 'string') remember(url, body);
-        else if (input && typeof input.clone === 'function') {
-          try { input.clone().text().then(function (s) { remember(url, s); }); } catch (_) {}
-        }
+      var watchThis = typeof body === 'string' && remember(url, body);
+      var requestBody = null;
+      if (!watchThis && isTarget(url) && input && typeof input.clone === 'function') {
+        try { requestBody = input.clone().text(); } catch (_) {}
       }
       return fetchOriginal.apply(this, arguments).then(function (res) {
-        if (isTarget(url) && saved) {
+        function inspect() {
           try {
             res.clone().text().then(function (txt) {
               process(url, res.status, txt, res.headers.get('Retry-After'));
             }).catch(function () {});
           } catch (_) {}
+        }
+        if (watchThis) inspect();
+        else if (requestBody) {
+          requestBody.then(function (txt) {
+            if (remember(url, txt)) inspect();
+          }).catch(function () {});
         }
         return res;
       });
