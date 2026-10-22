@@ -51,6 +51,9 @@ class SlotMonitor(
     private var resumed = false
     private var destroyed = false
     private var lastReadyAt = 0L
+    var diagnostics = "Oczekiwanie na skrypt strony..."
+        private set
+    private var hookDetected = false
 
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val notifyFirst: Boolean get() = prefs.getBoolean("notify_first", false)
@@ -139,7 +142,7 @@ class SlotMonitor(
             !supported -> lastError.ifEmpty { "Brak obsługi odczytu terminów w WebView." }
             !enabled -> "Monitorowanie wyłączone."
             now < blockedUntil -> "Wstrzymano po limicie HTTP 429 do " + clock(blockedUntil)
-            !requestReady -> "Otwórz Portal, zaloguj się i wybierz MORD Kraków, B, praktyczny."
+            !requestReady -> diagnostics
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Monitoring włączony. Ostatni odczyt: " + clock(lastCheckedAt) +
@@ -152,11 +155,18 @@ class SlotMonitor(
         try {
             val message = JSONObject(raw)
             when (message.optString("kind")) {
+                "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
+                "endpoint" -> diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..."
+                "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
+                "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
+                    message.optJSONArray("fields")?.toString().orEmpty().take(120)
+                "response" -> diagnostics = "Odpowiedź API: HTTP " + message.optInt("status")
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
                     lastAttemptAt = lastReadyAt
                     lastError = ""
+                    diagnostics = "Zidentyfikowano zapytanie MORD Kraków, B. Oczekiwanie na odpowiedź."
                 }
                 "terms" -> consume(message)
                 "rate" -> {
@@ -175,7 +185,8 @@ class SlotMonitor(
                 }
                 "http" -> lastError = "Odczyt nieudany: HTTP " + message.optInt("status")
                 "network" -> lastError = "Błąd sieci podczas sprawdzania terminów."
-                "format" -> lastError = "Portal zmienił format danych. Nie można potwierdzić terminów."
+                "format" -> lastError = "Nieznany format odpowiedzi. Pola: " +
+                    message.optJSONArray("fields")?.toString().orEmpty().take(120)
             }
             onUpdate()
         } catch (_: Exception) {
@@ -207,6 +218,7 @@ class SlotMonitor(
         lastCheckedAt = System.currentTimeMillis()
         lastNewCount = newItems.size
         lastError = ""
+        diagnostics = "Poprawny odczyt: " + slotCount + " terminów."
         prefs.edit()
             .putStringSet("last_ids", current.keys.toSet())
             .putString("earliest_slot", earliest)
