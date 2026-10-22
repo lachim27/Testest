@@ -226,6 +226,10 @@ class SlotMonitor(
         }
     }
 
+    fun testNotification() {
+        notify("To jest test powiadomienia ZłapEgzamin, nie rzeczywisty termin egzaminu.")
+    }
+
     private fun notify(body: String) {
         if (Build.VERSION.SDK_INT >= 33 &&
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
