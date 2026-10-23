@@ -187,6 +187,7 @@ class DashboardActivity : Activity() {
         }
         monitor.install()
         browser.loadUrl(portal)
+        if (monitor.enabled) startBackgroundMonitor()
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
@@ -239,6 +240,7 @@ class DashboardActivity : Activity() {
         put(status, text(monitor.status(), 14f, muted), 15)
         put(status, action(if (monitor.enabled) "Wstrzymaj monitorowanie" else "Włącz monitorowanie") {
             monitor.setEnabled(!monitor.enabled)
+            if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
         }, 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
         put(page, status, 20)
@@ -258,7 +260,7 @@ class DashboardActivity : Activity() {
         put(tools, action("🔔  Test powiadomienia", false) { monitor.testNotification() })
         put(page, tools, 20)
         put(page, text("Wersja 3.7 Android • Interwał sprawdzania ustawiany ręcznie tylko podczas używania aplikacji.\n"+
-            "Bez działania w tle i bez automatycznej rezerwacji.", 12f, muted))
+            "Monitor w tle działa dopóki Android utrzymuje proces aplikacji; po zamknięciu lub ubiciu procesu zatrzyma się. Bez automatycznej rezerwacji.", 12f, muted))
     }
     private fun settingsPage() {
         val page = scroll()
@@ -342,12 +344,19 @@ class DashboardActivity : Activity() {
         put(page, guide, 18)
         put(page, action("Otwórz Portal") { show("portal") })
     }
+    private fun startBackgroundMonitor() {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, MonitorForegroundService::class.java))
+            else startService(Intent(this, MonitorForegroundService::class.java))
+        } catch (_: Exception) { Toast.makeText(this, "Nie można uruchomić usługi monitorowania", Toast.LENGTH_LONG).show() }
+    }
     override fun onResume() {
         super.onResume()
         if (::monitor.isInitialized) monitor.resume()
     }
     override fun onPause() {
-        if (::monitor.isInitialized) monitor.pause()
+        // Keep the polling loop alive while the Activity remains in memory.
+        // The foreground service keeps the process prioritized after Home/screen lock.
         super.onPause()
     }
     override fun onNewIntent(intent: Intent) {
