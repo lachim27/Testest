@@ -144,6 +144,31 @@ class SlotMonitor(
         onUpdate()
     }
 
+    fun onPortalNavigation(url: String?) {
+        if (!requestReady || url.isNullOrBlank()) return
+        val uri = Uri.parse(url)
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return
+        if (host != "info-kierowca.pl" && !host.endsWith(".info-kierowca.pl")) return
+        val path = uri.path.orEmpty().lowercase(Locale.ROOT)
+        if (Regex("login|logowanie|signin|sign-in|authorize|authentication").containsMatchIn(path)) {
+            reportExpiredSession("Przekierowanie do logowania")
+        }
+    }
+
+    private fun reportExpiredSession(reason: String) {
+        requestPending = false
+        requestReady = false
+        lastError = "Sesja wygasła ($reason). Zaloguj się ponownie."
+        diagnostics = lastError
+        if (!sessionAlertSent) {
+            sessionAlertSent = true
+            prefs.edit().putBoolean("session_alert_sent", true).apply()
+            sendTelegram(lastError)
+            notify(lastError, "ZłapEgzamin – sesja wygasła")
+        }
+        onUpdate()
+    }
+
     fun resume() {
         if (destroyed || resumed) return
         resumed = true
@@ -237,17 +262,7 @@ class SlotMonitor(
                         .putLong("blocked_until", until).apply()
                     lastError = "Portal ograniczył liczbę żądań (HTTP 429)."
                 }
-                "auth" -> {
-                    requestPending = false
-                    requestReady = false
-                    lastError = "Sesja wygasła (HTTP " + message.optInt("status") + "). Zaloguj się ponownie."
-                    if (!sessionAlertSent) {
-                        sessionAlertSent = true
-                        prefs.edit().putBoolean("session_alert_sent", true).apply()
-                        sendTelegram(lastError)
-                        notify(lastError, "ZłapEgzamin – sesja wygasła")
-                    }
-                }
+                "auth" -> reportExpiredSession("HTTP " + message.optInt("status") + " lub ekran logowania")
                 "http" -> { requestPending = false; adaptiveMs = minOf(4 * hourMs, maxOf(120000L, effectiveMs * 2)); prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply(); lastError = "Odczyt nieudany: HTTP " + message.optInt("status") }
                 "network" -> { requestPending = false; lastError = "Błąd sieci podczas sprawdzania terminów." }
                 "format" -> lastError = "Nieznany format odpowiedzi. Pola: " +
