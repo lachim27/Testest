@@ -55,6 +55,7 @@
     var resolved = new URL(String(url), location.href).href;
     var wasReady = !!saved;
     saved = {url: resolved, body: body};
+    hadAuthenticatedRequest = true;
     if (!wasReady) send({kind: 'ready'});
     return true;
   }
@@ -166,6 +167,8 @@
   // Mirror Windows: click the portal's own session-extension button
   // only while its expiration warning is actually visible.
   var lastExtensionClick = 0;
+  var lastAuthSignal = 0;
+  var hadAuthenticatedRequest = false;
   function visible(el) {
     if (!el || !el.isConnected) return false;
     var style = window.getComputedStyle(el);
@@ -181,7 +184,7 @@
         var node = nodes[i];
         var label = (node.innerText || node.value || node.getAttribute('aria-label') || '')
           .replace(/\\s+/g, ' ').trim().toLowerCase();
-        if (label === 'przedłuż sesję' || label === 'przedluz sesje') {
+        if (/przedłuż\s+sesj|przedluz\s+sesj|extend\s+session|pozostań\s+zalogowan/.test(label)) {
           candidate = node;
           break;
         }
@@ -196,7 +199,25 @@
       send({kind:'extended'});
     } catch (_) {}
   }
-  window.setInterval(extendWhenPrompted, 3000);
+  function detectExpiredSession() {
+    try {
+      if (!hadAuthenticatedRequest || !document.body ||
+          Date.now() - lastAuthSignal < 60000) return;
+      var path = (location.pathname || '').toLowerCase();
+      var authPath = /login|signin|sign-in|logowanie|authorize|authentication/.test(path);
+      var content = (document.body.innerText || '').slice(0, 2500).toLowerCase();
+      var expiredText = /sesja (wygasła|wygasla|zakończona)|session expired|zaloguj się ponownie|ponowne logowanie/.test(content);
+      if (authPath || expiredText) {
+        lastAuthSignal = Date.now();
+        saved = null;
+        send({kind:'auth', status:401});
+      }
+    } catch (_) {}
+  }
+  window.setInterval(function () {
+    extendWhenPrompted();
+    detectExpiredSession();
+  }, 3000);
   window.__zlapCheckNow = function () {
     if (!saved || running || requestInFlight || Date.now() < cooldownUntil ||
         Date.now() - lastRequest < 15000) return false;
