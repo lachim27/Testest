@@ -320,12 +320,7 @@ class SlotMonitor(
     fun setInterval(seconds: Int) {
         if (seconds !in 10..3600) return
         prefs.edit().putInt("interval_seconds", seconds).apply()
-        // Reducing the requested interval must not leave an obsolete adaptive
-        // interval behind. An HTTP 429 backoff still remains in blockedUntil.
-        if (blockedUntil <= System.currentTimeMillis() && strikes == 0) {
-            adaptiveMs = intervalMs
-            prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply()
-        }
+        if (adaptiveMs < intervalMs) adaptiveMs = intervalMs
         onUpdate()
     }
 
