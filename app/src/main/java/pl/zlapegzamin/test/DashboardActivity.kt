@@ -277,6 +277,7 @@ class DashboardActivity : Activity() {
         put(page, text("Szybkie działania", 19f, Color.WHITE, true), 12)
         val tools = card()
         put(tools, action("↗  Zaloguj się przez przeglądarkę") { outside(Uri.parse(portal)) }, 11)
+        put(tools, action("↻  Przedłuż sesję", false) { renewSession() }, 11)
         put(tools, action("🔔  Test powiadomienia", false) { monitor.testNotification() })
         put(page, tools, 20)
         put(page, text("Wersja 3.7 Android • Interwał sprawdzania ustawiany ręcznie tylko podczas używania aplikacji.\n"+
@@ -365,6 +366,20 @@ class DashboardActivity : Activity() {
         put(page, guide, 18)
         put(page, action("Otwórz Portal") { show("portal") })
     }
+    private fun renewSession() {
+        // Refresh the authenticated portal using its own cookies.
+        // If the identity provider requires user interaction, the portal displays login.
+        if (!::browser.isInitialized) return
+        show("portal")
+        val current = browser.url
+        if (current != null && Uri.parse(current).host?.endsWith("info-kierowca.pl") == true) {
+            browser.reload()
+        } else {
+            browser.loadUrl(portal)
+        }
+        Toast.makeText(this, "Odświeżam sesję. Jeśli portal poprosi, zaloguj się ponownie.", Toast.LENGTH_LONG).show()
+    }
+
     private fun startBackgroundMonitor() {
         try {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, MonitorForegroundService::class.java))
