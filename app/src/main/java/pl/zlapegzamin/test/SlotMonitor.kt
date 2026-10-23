@@ -37,6 +37,8 @@ class SlotMonitor(
     private val handler = Handler(Looper.getMainLooper())
     private val rateGuard = RateGuard(activity)
     val intervalSeconds: Int get() = prefs.getInt("interval_seconds", 30)
+    val minimumAutoGapSeconds: Int get() = rateGuard.minSpacingSeconds
+    val effectiveAutoGapSeconds: Int get() = maxOf(intervalSeconds, minimumAutoGapSeconds, ((adaptiveMs + 999L) / 1000L).toInt())
     private val intervalMs: Long get() = intervalSeconds * 1000L
     private var adaptiveMs = prefs.getLong("adaptive_interval_ms", 0L).coerceAtLeast(0L)
     private val effectiveMs: Long get() = maxOf(intervalMs, adaptiveMs)
@@ -318,8 +320,20 @@ class SlotMonitor(
     fun setInterval(seconds: Int) {
         if (seconds !in 10..3600) return
         prefs.edit().putInt("interval_seconds", seconds).apply()
-        if (adaptiveMs < intervalMs) adaptiveMs = intervalMs
+        // Reducing the requested interval must not leave an obsolete adaptive
+        // interval behind. An HTTP 429 backoff still remains in blockedUntil.
+        if (blockedUntil <= System.currentTimeMillis() && strikes == 0) {
+            adaptiveMs = intervalMs
+            prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply()
+        }
         onUpdate()
+    }
+
+    fun setMinimumAutoGap(seconds: Int): Boolean {
+        if (!rateGuard.setMinimumSpacingSeconds(seconds)) return false
+        event("Minimalny odstęp automatu: " + seconds + " sekund")
+        onUpdate()
+        return true
     }
 
     fun setNotifyFirst(value: Boolean) {
@@ -343,7 +357,8 @@ class SlotMonitor(
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
                 ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. Harmonogram automatu: " +
                 clock(nextPlannedAutoAt) + ". Najwcześniejszy dozwolony odczyt: " + clock(nextAllowed()) +
-                ". Wybrany interwał: " + intervalSeconds + " s (minimalna przerwa automatu 15 minut)."
+                ". Interwał: " + intervalSeconds + " s, minimalny odstęp: " +
+                minimumAutoGapSeconds + " s (domyślnie 900 s)."
         }
     }
 
