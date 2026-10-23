@@ -7,7 +7,7 @@
   window.__zlapHookV3 = true;
   send({kind:'hook'});
   var saved = null, running = false;
-  var endpoint = /\/Schedules\/user\/OneCenterExam(?:[?#]|$)/i;
+  var endpoint = /onecenterexam/i;
   function send(obj) {
     try {
       if (window.ZlapBridge && window.ZlapBridge.postMessage) {
@@ -70,7 +70,7 @@
       data.examCollectionForDay.forEach(function (day) {
         if (!day || !Array.isArray(day.examCollections)) return;
         day.examCollections.forEach(function (exam) {
-          if (!exam) return;
+          if (!exam || String(exam.examType) !== 'Practice' || String(exam.category) !== 'B' || Number(exam.organizationId) !== 21) return;
           var places = Number(exam.placePracticeAmount || 0);
           if (places < 1 || !exam.practiceId || !exam.practiceDateTime) return;
           var type = String(exam.examType || '');
