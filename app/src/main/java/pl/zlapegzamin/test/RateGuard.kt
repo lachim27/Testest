@@ -18,7 +18,16 @@ class RateGuard(context: Context) {
         context.getSharedPreferences("zlap_rate_guard_v1", Context.MODE_PRIVATE)
 
     private val hour = 3_600_000L
-    private val minSpacing = 15 * 60_000L
+    /** Factory default: 15 minutes. The user can change it in Options. */
+    val minSpacingSeconds: Int get() =
+        prefs.getInt("minimum_auto_gap_seconds", 900).coerceIn(10, 3600)
+    private val minSpacing: Long get() = minSpacingSeconds * 1000L
+
+    fun setMinimumSpacingSeconds(seconds: Int): Boolean {
+        if (seconds !in 10..3600) return false
+        prefs.edit().putInt("minimum_auto_gap_seconds", seconds).apply()
+        return true
+    }
     private val safety = 45_000L
     private val maxRequestsPerHour = 4
 
@@ -37,7 +46,7 @@ class RateGuard(context: Context) {
 
     /**
      * All real searches count towards the shared hourly quota. Only real
-     * automatic searches advance the 15-minute automatic timetable.
+     * automatic searches advance the configured automatic timetable.
      * Manual and user-driven portal searches never reset that timer.
      */
     fun recordRequest(automatic: Boolean = false) {
