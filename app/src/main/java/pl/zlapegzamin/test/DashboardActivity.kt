@@ -164,8 +164,8 @@ class DashboardActivity : Activity() {
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
-        // The system may lay out the Activity edge-to-edge even without an opt-in.
-        // Apply the real insets to the root, not only the bottom tab bar.
+        // Android 15 enforces edge-to-edge for targetSdk 35. Keep the content
+        // below the status bar and the tabs above gesture/three-button navigation.
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
             root.setOnApplyWindowInsetsListener { view, insets ->
@@ -173,7 +173,8 @@ class DashboardActivity : Activity() {
                     WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars() or
                         WindowInsets.Type.displayCutout()
                 )
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                view.setPadding(bars.left, bars.top, bars.right, 0)
+                navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + bars.bottom)
                 insets
             }
         } else {
