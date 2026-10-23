@@ -35,6 +35,7 @@ class SlotMonitor(
 ) {
     private val prefs = activity.getSharedPreferences("slot_monitor_v1", Context.MODE_PRIVATE)
     private val handler = Handler(Looper.getMainLooper())
+    private val rateGuard = RateGuard(activity)
     val intervalSeconds: Int get() = prefs.getInt("interval_seconds", 30)
     private val intervalMs: Long get() = intervalSeconds * 1000L
     private var adaptiveMs = prefs.getLong("adaptive_interval_ms", 0L).coerceAtLeast(0L)
@@ -44,7 +45,7 @@ class SlotMonitor(
     private var nextJitterMs = 0L
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
-    private fun nextAllowed(): Long = maxOf(blockedUntil, lastAttemptAt + effectiveMs + nextJitterMs, lastNetworkActivity + 15000L)
+    private fun nextAllowed(): Long = maxOf(rateGuard.nextAllowed(intervalSeconds), lastAttemptAt + effectiveMs + nextJitterMs, lastNetworkActivity + 15000L)
     var supported = false
         private set
     var requestReady = false
@@ -80,7 +81,11 @@ class SlotMonitor(
     }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val notifyFirst: Boolean get() = prefs.getBoolean("notify_first", false)
-    val blockedUntil: Long get() = prefs.getLong("blocked_until", 0L)
+    val blockedUntil: Long get() = rateGuard.blockedUntil
+    val searchesThisHour: Int get() = rateGuard.usedInHour()
+    val nextCheckAt: Long get() = nextAllowed()
+    val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
+        .split("|").filter { it.isNotBlank() }.take(20)
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -213,8 +218,9 @@ class SlotMonitor(
             !requestReady -> diagnostics
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
-            else -> "Monitoring włączony. Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Interwał efektywny: " + (effectiveMs / 1000L) + " s. Kolejny odczyt po: " + clock(nextAllowed()) + "."
+            else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
+                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. Kolejna próba: " + clock(nextAllowed()) +
+                ". Wybrany interwał: " + intervalSeconds + " s (minimalna przerwa 15 minut)."
         }
     }
 
@@ -229,6 +235,7 @@ class SlotMonitor(
                 "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
+                "request" -> { rateGuard.recordRequest(); lastAttemptAt = System.currentTimeMillis(); diagnostics = "Zapytanie do portalu; wykorzystano " + rateGuard.usedInHour() + "/4 próby w tej godzinie." }
                 "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {
                     requestReady = true
@@ -242,25 +249,18 @@ class SlotMonitor(
                 "terms" -> consume(message)
                 "rate" -> {
                     requestPending = false
-                    val retry = message.optString("retryAfter").trim()
-                    val now = System.currentTimeMillis()
-                    val retryMs = retry.toLongOrNull()?.takeIf { it >= 0 }?.let {
-                        (it.coerceAtMost(86400L) * 1000L)
-                    } ?: try {
-                        val parsed = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
-                            isLenient = false
-                        }.parse(retry)
-                        parsed?.time?.minus(now)?.coerceAtLeast(0L)
-                    } catch (_: Exception) { null }
-                    strikes = minOf(10, strikes + 1)
+                    val previousBlock = blockedUntil
+                    val until = rateGuard.on429(message.optString("retryAfter"))
+                    strikes = rateGuard.strikes
                     adaptiveMs = minOf(4 * hourMs, maxOf(120000L, maxOf(intervalMs * 2L, adaptiveMs * 2L)))
-                    val fallback = minOf(4 * hourMs, 5 * 60_000L * (1L shl minOf(5, strikes - 1)))
-                    val waitMs = maxOf(fallback, retryMs ?: 0L)
-                    val until = maxOf(blockedUntil, now + waitMs)
                     prefs.edit().putInt("strikes", strikes)
-                        .putLong("adaptive_interval_ms", adaptiveMs)
-                        .putLong("blocked_until", until).apply()
-                    lastError = "Portal ograniczył liczbę żądań (HTTP 429)."
+                        .putLong("adaptive_interval_ms", adaptiveMs).apply()
+                    lastError = "HTTP 429 — portal ograniczył zapytania. Następna próba najwcześniej " + clock(until) + "."
+                    diagnostics = "Wstrzymano sprawdzanie zgodnie z limitem portalu."
+                    if (until > previousBlock) {
+                        notify(lastError, "ZłapEgzamin – limit zapytań")
+                        sendTelegram("ZłapEgzamin: " + lastError)
+                    }
                 }
                 "auth" -> reportExpiredSession("HTTP " + message.optInt("status") + " lub ekran logowania")
                 "http" -> { requestPending = false; adaptiveMs = minOf(4 * hourMs, maxOf(120000L, effectiveMs * 2)); prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply(); lastError = "Odczyt nieudany: HTTP " + message.optInt("status") }
@@ -303,6 +303,7 @@ class SlotMonitor(
         earliest = sorted.firstOrNull()?.replace('T', ' ')?.take(16) ?: ""
         slotCount = current.size
         lastCheckedAt = System.currentTimeMillis()
+        rateGuard.resetAfterLongSuccess()
         sessionAlertSent = false
         prefs.edit().putBoolean("session_alert_sent", false).apply()
         lastNewCount = newItems.size
@@ -312,6 +313,7 @@ class SlotMonitor(
             .putStringSet("last_ids", current.keys.toSet())
             .putString("earliest_slot", earliest)
             .putInt("slot_count", slotCount)
+            .putString("recent_slots", sorted.distinct().take(20).joinToString("|"))
             .putLong("last_checked_at", lastCheckedAt)
             .apply()
 
