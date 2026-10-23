@@ -103,6 +103,7 @@ class SlotMonitor(
             // WebView's JavaScript timers are throttled on a locked screen.
             if (enabled && supported && isPortal(web.url)) {
                 web.evaluateJavascript("window.__zlapSessionTick && window.__zlapSessionTick();", null)
+                inspectSessionState()
             }
             if (enabled && supported && now >= blockedUntil && now - maxOf(lastCheckedAt, monitorStartedAt) > 15 * 60_000L && now - lastStaleAlertAt > 60 * 60_000L) {
                 lastStaleAlertAt = now
@@ -165,13 +166,37 @@ class SlotMonitor(
     }
 
     fun onPortalNavigation(url: String?) {
-        if (!requestReady || url.isNullOrBlank()) return
+        if (url.isNullOrBlank()) return
+        // Main-frame navigations replace the JS context. Check the actual page
+        // text natively, rather than relying on a volatile JS login flag.
+        inspectSessionState()
+        if (!requestReady) return
         val uri = Uri.parse(url)
         val host = uri.host?.lowercase(Locale.ROOT) ?: return
         if (host != "info-kierowca.pl" && !host.endsWith(".info-kierowca.pl")) return
         val path = uri.path.orEmpty().lowercase(Locale.ROOT)
         if (Regex("login|logowanie|signin|sign-in|authorize|authentication").containsMatchIn(path)) {
             reportExpiredSession("Przekierowanie do logowania")
+        }
+    }
+
+    fun inspectSessionState() {
+        if (destroyed || !enabled || !isPortal(web.url)) return
+        // This is an exact match for the logged-out screen shown by the portal.
+        // It never submits a request or touches the user's authentication data.
+        web.evaluateJavascript(
+            """(function() {
+              try {
+                var text = (document.body && document.body.innerText || '').toLocaleLowerCase('pl-PL');
+                return text.includes('wylogowano z powodu nieaktywności') ||
+                       text.includes('sesja wygasła po braku aktywności') ? 'expired' : 'ok';
+              } catch (_) { return 'unknown'; }
+            })();"""
+        ) { value ->
+            if (value == "\"expired\"" && (requestReady || lastReadyAt > 0L ||
+                    lastCheckedAt > 0L || prefs.getLong("authenticated_at", 0L) > 0L)) {
+                reportExpiredSession("Wylogowano z powodu nieaktywności")
+            }
         }
     }
 
@@ -194,6 +219,7 @@ class SlotMonitor(
         if (destroyed || resumed) return
         resumed = true
         handler.post(ticker)
+        handler.postDelayed({ if (!destroyed) inspectSessionState() }, 800L)
     }
 
     fun pause() {
@@ -305,6 +331,7 @@ class SlotMonitor(
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
+                    prefs.edit().putLong("authenticated_at", lastReadyAt).apply()
                     lastAttemptAt = lastReadyAt - effectiveMs
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
@@ -328,7 +355,12 @@ class SlotMonitor(
                         sendTelegram("ZłapEgzamin: " + lastError)
                     }
                 }
-                "auth" -> reportExpiredSession("HTTP " + message.optInt("status") + " lub ekran logowania")
+                "auth" -> {
+                    val reason = if (message.optString("reason") == "idle")
+                        "Wylogowano z powodu nieaktywności"
+                    else "HTTP " + message.optInt("status") + " lub ekran logowania"
+                    reportExpiredSession(reason)
+                }
                 "extended" -> {
                     event("Kliknięto w portalu: Przedłuż sesję (oczekiwanie na potwierdzenie)")
                     diagnostics = "Wysłano kliknięcie Przedłuż sesję. Sprawdzam, czy portal je zaakceptował."
