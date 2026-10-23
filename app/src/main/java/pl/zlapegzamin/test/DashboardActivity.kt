@@ -106,6 +106,19 @@ class DashboardActivity : Activity() {
                 }
                 true
             }
+            "mobywatel" -> {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    })
+                } catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this, "Zainstaluj lub zaktualizuj mObywatel.", Toast.LENGTH_LONG).show()
+                    outside(Uri.parse("https://www.gov.pl/web/mobywatel"))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Nie udało się otworzyć mObywatel.", Toast.LENGTH_LONG).show()
+                }
+                true
+            }
             "market", "tel", "mailto", "sms" -> { outside(uri); true }
             else -> {
                 Toast.makeText(this, "Nieznany typ linku: " + uri.scheme, Toast.LENGTH_LONG).show()
