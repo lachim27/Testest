@@ -196,7 +196,7 @@ class SlotMonitor(
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
-                    lastAttemptAt = lastReadyAt
+                    lastAttemptAt = lastReadyAt - effectiveMs
                     lastError = ""
                     diagnostics = "Zidentyfikowano zapytanie MORD Kraków, B. Oczekiwanie na odpowiedź."
                 }
