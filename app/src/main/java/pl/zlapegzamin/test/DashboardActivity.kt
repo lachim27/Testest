@@ -162,6 +162,10 @@ class DashboardActivity : Activity() {
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    if (::monitor.isInitialized) monitor.onPortalNavigation(url)
+                }
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
                     go(request.url)
                 @Deprecated("Deprecated in Java")
