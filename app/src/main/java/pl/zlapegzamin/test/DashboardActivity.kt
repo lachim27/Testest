@@ -241,7 +241,8 @@ class DashboardActivity : Activity() {
         put(results, text("NAJBLIŻSZY TERMIN", 11f, Color.rgb(143, 182, 255), true), 10)
         put(results, text(monitor.earliest.ifBlank { "Jeszcze nieodczytany" },
             23f, Color.WHITE, true), 12)
-        put(results, text("Wolnych terminów w odczycie: " + monitor.slotCount, 14f, muted), 14)
+        put(results, text("Wolnych terminów w odczycie: " + monitor.slotCount, 14f, muted), 10)
+        put(results, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 14f, muted), 14)
         put(results, action("Zobacz terminy w portalu", false) { show("portal") })
         put(page, results, 20)
 
@@ -268,6 +269,7 @@ class DashboardActivity : Activity() {
         put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(debug, text(monitor.diagnostics, 14f, muted), 12)
         put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
+        put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
         put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
         put(page, debug, 19)
 
