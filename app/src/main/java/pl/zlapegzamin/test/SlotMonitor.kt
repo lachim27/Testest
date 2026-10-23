@@ -42,10 +42,10 @@ class SlotMonitor(
     private val effectiveMs: Long get() = maxOf(intervalMs, adaptiveMs)
     private var lastNetworkActivity = 0L
     private var requestPending = false
-    private var nextJitterMs = 0L
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
-    private fun nextAllowed(): Long = maxOf(rateGuard.nextAllowed(intervalSeconds), lastAttemptAt + effectiveMs + nextJitterMs, lastNetworkActivity + 15000L)
+    private val effectiveSeconds: Int get() = ((effectiveMs + 999L) / 1000L).toInt().coerceAtLeast(1)
+    private fun nextAllowed(): Long = maxOf(rateGuard.nextAllowed(effectiveSeconds), lastNetworkActivity + 15000L)
     var supported = false
         private set
     var requestReady = false
@@ -105,6 +105,8 @@ class SlotMonitor(
     }
     val blockedUntil: Long get() = rateGuard.blockedUntil
     val searchesThisHour: Int get() = rateGuard.usedInHour()
+    /** Planned auto time is intentionally unaffected by manual search requests. */
+    val nextPlannedAutoAt: Long get() = rateGuard.nextScheduledAutomatic(effectiveSeconds)
     val nextCheckAt: Long get() = nextAllowed()
     val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
         .split("|").filter { it.isNotBlank() }.take(20)
@@ -141,7 +143,6 @@ class SlotMonitor(
             if (enabled && supported && requestReady && now >= blockedUntil &&
                 now >= nextAllowed() && !requestPending && isPortal(web.url)) {
                 requestPending = true
-                nextJitterMs = (0L..minOf(15000L, effectiveMs / 10L)).random()
                 lastAttemptAt = now
                 web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();") { result ->
                     if (result != "true") requestPending = false
@@ -291,7 +292,6 @@ class SlotMonitor(
         }
         requestPending = true
         lastAttemptAt = now
-        nextJitterMs = 0L
         web.evaluateJavascript(
             "Boolean(window.__zlapCheckNow && window.__zlapCheckNow('manual'));"
         ) { value ->
@@ -341,8 +341,9 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. Kolejna próba: " + clock(nextAllowed()) +
-                ". Wybrany interwał: " + intervalSeconds + " s (minimalna przerwa 15 minut)."
+                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. Harmonogram automatu: " +
+                clock(nextPlannedAutoAt) + ". Najwcześniejszy dozwolony odczyt: " + clock(nextAllowed()) +
+                ". Wybrany interwał: " + intervalSeconds + " s (minimalna przerwa automatu 15 minut)."
         }
     }
 
@@ -357,7 +358,13 @@ class SlotMonitor(
                 "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
-                "request" -> { rateGuard.recordRequest(); lastAttemptAt = System.currentTimeMillis(); diagnostics = "Zapytanie do portalu; wykorzystano " + rateGuard.usedInHour() + "/4 próby w tej godzinie." }
+                "request" -> {
+                    val automatic = message.optString("source") == "automatic"
+                    rateGuard.recordRequest(automatic = automatic)
+                    lastAttemptAt = System.currentTimeMillis()
+                    diagnostics = (if (automatic) "Automatyczne" else "Ręczne lub portalowe") +
+                        " zapytanie; wykorzystano " + rateGuard.usedInHour() + "/4 próby w tej godzinie."
+                }
                 "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {
                     requestReady = true
@@ -366,7 +373,6 @@ class SlotMonitor(
                         .putLong("authenticated_at", lastReadyAt)
                         .putLong("web_heartbeat_at", lastReadyAt)
                         .putBoolean("session_expired", false).apply()
-                    lastAttemptAt = lastReadyAt - effectiveMs
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
                     lastError = ""
