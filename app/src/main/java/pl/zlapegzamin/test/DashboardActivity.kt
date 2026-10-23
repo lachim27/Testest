@@ -314,10 +314,12 @@ class DashboardActivity : Activity() {
         val status = card()
         put(status, text("AUTOMATYCZNE SPRAWDZANIE", 12f, muted, true), 12)
         val now = System.currentTimeMillis()
-        val connected = monitor.enabled && monitor.requestReady && monitor.lastCheckedAt > 0L &&
+        val connected = monitor.enabled && !monitor.sessionExpired &&
+            monitor.requestReady && monitor.lastCheckedAt > 0L &&
             monitor.blockedUntil <= now
         val stateLabel = when {
             !monitor.enabled -> "●  Monitor wyłączony"
+            monitor.sessionExpired -> "●  WYLOGOWANO — zaloguj się ponownie"
             monitor.blockedUntil > now -> "●  Limit HTTP 429"
             monitor.requestReady && monitor.lastCheckedAt == 0L -> "●  Czekam na pierwszy odczyt"
             connected -> "●  Odczyt terminów działa"
