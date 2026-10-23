@@ -69,6 +69,7 @@ class SlotMonitor(
         private set
     private var hookDetected = false
     private var sessionAlertSent = prefs.getBoolean("session_alert_sent", false)
+    val sessionExpired: Boolean get() = prefs.getBoolean("session_expired", false)
     private var monitorStartedAt = System.currentTimeMillis()
     private var lastStaleAlertAt = prefs.getLong("stale_alert_at", 0L)
 
@@ -205,6 +206,7 @@ class SlotMonitor(
         requestReady = false
         lastError = "Sesja wygasła ($reason). Zaloguj się ponownie."
         diagnostics = lastError
+        prefs.edit().putBoolean("session_expired", true).apply()
         if (!sessionAlertSent) {
             event("Sesja wygasła – ponów logowanie")
             sessionAlertSent = true
@@ -305,6 +307,7 @@ class SlotMonitor(
         return when {
             !supported -> lastError.ifEmpty { "Brak obsługi odczytu terminów w WebView." }
             !enabled -> "Monitorowanie wyłączone."
+            sessionExpired -> "Sesja portalu wygasła. Zaloguj się ponownie w zakładce Portal."
             now < blockedUntil -> "Wstrzymano po limicie HTTP 429 do " + clock(blockedUntil)
             !requestReady -> diagnostics
             lastError.isNotEmpty() -> lastError
@@ -405,6 +408,7 @@ class SlotMonitor(
         earliest = sorted.firstOrNull()?.replace('T', ' ')?.take(16) ?: ""
         slotCount = current.size
         lastCheckedAt = System.currentTimeMillis()
+        prefs.edit().putBoolean("session_expired", false).apply()
         rateGuard.resetAfterLongSuccess()
         sessionAlertSent = false
         prefs.edit().putBoolean("session_alert_sent", false).apply()
