@@ -341,7 +341,14 @@ class SlotMonitor(
     }
 
     fun configureTelegram(token: String, chatId: String) {
-        prefs.edit().putString("tg_token", token.trim()).putString("tg_chat", chatId.trim()).apply()
+        // Empty text fields mean "leave existing value unchanged", never silently erase credentials.
+        val oldToken = prefs.getString("tg_token", "") ?: ""
+        val oldChat = prefs.getString("tg_chat", "") ?: ""
+        prefs.edit()
+            .putString("tg_token", token.trim().ifBlank { oldToken })
+            .putString("tg_chat", chatId.trim().ifBlank { oldChat })
+            .apply()
+        event("Zapisano ustawienia powiadomień Telegram")
         onUpdate()
     }
     fun telegramConfigured(): Boolean = !prefs.getString("tg_token", "").isNullOrBlank() && !prefs.getString("tg_chat", "").isNullOrBlank()
