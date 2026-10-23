@@ -7,6 +7,9 @@ name: ZlapEgzamin Android APK
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,3 +56,17 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Only publish when the commit explicitly includes [apk].
+      # The resulting release asset is a direct APK, not an Actions ZIP.
+      - name: Publish direct APK download
+        if: contains(github.event.head_commit.message, '[apk]')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ZlapEgzamin-Android.apk
+          gh release create "android-beta-${GITHUB_RUN_NUMBER}" ZlapEgzamin-Android.apk \
+            --target "${GITHUB_SHA}" \
+            --title "ZlapEgzamin Android 0.5 beta (#${GITHUB_RUN_NUMBER})" \
+            --notes "Wersja testowa: nowy interfejs, kalendarz, opcje dat i interwalu oraz ochrona HTTP 429. Nie wykonuje rezerwacji." \
+            --prerelease
