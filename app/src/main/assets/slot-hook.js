@@ -344,6 +344,7 @@
   function zlapBookingHeaders(accept) {
     var headers = new Headers(saved && saved.headers ? saved.headers : {});
     headers.set('Accept', accept || 'application/json');
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     return headers;
   }
   function zlapBookingError(reason, date, reservationId) {
