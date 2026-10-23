@@ -164,13 +164,28 @@ class DashboardActivity : Activity() {
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
-        // Let Android reserve both system-bar areas; avoid mixing root and tab padding.
+        // Edge-to-edge is enforced on newer Android versions. Apply insets only
+        // to the header and bottom navigation, never twice to the root.
         if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(true)
+            window.setDecorFitsSystemWindows(false)
+            val headerTop = dp(18)
+            val navBottom = dp(10)
+            root.setOnApplyWindowInsetsListener { _, insets ->
+                val status = insets.getInsets(
+                    WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
+                )
+                val nav = insets.getInsets(WindowInsets.Type.navigationBars())
+                header.setPadding(dp(22) + status.left, headerTop + status.top,
+                    dp(22) + status.right, dp(18))
+                navigation.setPadding(dp(12) + nav.left, dp(9),
+                    dp(12) + nav.right, navBottom + nav.bottom)
+                insets
+            }
         } else {
             root.fitsSystemWindows = true
         }
         setContentView(root)
+        if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
 
         monitor = SlotMonitor(this, browser) {
             if (::pages.isInitialized && ::monitor.isInitialized && tab != "portal") show(tab)
