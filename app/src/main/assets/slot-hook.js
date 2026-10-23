@@ -6,7 +6,8 @@
   if (window.__zlapHookV3) return;
   window.__zlapHookV3 = true;
   send({kind:'hook'});
-  var saved = null, running = false;
+  var saved = null, running = false, lastRequest = 0, cooldownUntil = 0;
+  var requestInFlight = false;
   var endpoint = /onecenterexam/i;
   function send(obj) {
     try {
@@ -49,9 +50,11 @@
     if (!isTarget(url)) return;
     send({kind:'response', status:status});
     if (status === 429) {
+      cooldownUntil = Date.now() + 30 * 60 * 1000;
       send({kind:'rate', retryAfter: String(retryAfter || '').slice(0, 120)});
       return;
     }
+    if (status === 200) cooldownUntil = 0;
     if (status === 401 || status === 403) {
       send({kind:'auth', status:status});
       return;
@@ -99,7 +102,9 @@
       if (!watchThis && isTarget(url) && input && typeof input.clone === 'function') {
         try { requestBody = input.clone().text(); } catch (_) {}
       }
+      if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; }
       return fetchOriginal.apply(this, arguments).then(function (res) {
+        if (isTarget(url)) requestInFlight = false;
         function inspect() {
           try {
             res.clone().text().then(function (txt) {
@@ -134,11 +139,17 @@
         } catch (_) {}
       });
     }
+    if (isTarget(this.__zlapURL)) {
+      lastRequest = Date.now(); requestInFlight = true;
+      this.addEventListener('loadend', function () { requestInFlight = false; }, {once:true});
+    }
     return sendOriginal.apply(this, arguments);
   };
   window.__zlapCheckNow = function () {
-    if (!saved || running) return false;
+    if (!saved || running || requestInFlight || Date.now() < cooldownUntil ||
+        Date.now() - lastRequest < 15000) return false;
     running = true;
+    lastRequest = Date.now();
     fetchOriginal.call(window, saved.url, {
       method: 'POST',
       body: saved.body,
