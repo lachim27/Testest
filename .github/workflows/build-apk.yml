@@ -41,8 +41,15 @@ jobs:
       - name: Build APK
         run: gradle assembleDebug --no-daemon
 
+      - name: Verify APK exists
+        run: |
+          ls -lah app/build/outputs/apk/debug/
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ZlapEgzamin-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
