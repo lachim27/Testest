@@ -94,8 +94,8 @@ class SlotMonitor(
                 val from = java.time.LocalDate.parse(dateFrom)
                 val to = java.time.LocalDate.parse(dateTo)
                 val today = java.time.LocalDate.now()
-                if (to.isBefore(today) || from.isAfter(today.plusDays(90)) ||
-                    java.time.temporal.ChronoUnit.DAYS.between(from, to) > 90) return false
+                if (to.isBefore(today) || from.isAfter(today.plusDays(30)) ||
+                    java.time.temporal.ChronoUnit.DAYS.between(from, to) > 30) return false
             } catch (_: Exception) { return false }
         }
         prefs.edit().putBoolean("auto_reserve", value).apply()
@@ -528,7 +528,7 @@ class SlotMonitor(
     }
 
     private fun bookingSucceeded(message: JSONObject) {
-        if (!bookingInFlight || !autoReserveEnabled) return
+        if (!bookingInFlight) return
         val reservationId = message.optString("reservationId").take(90)
         val date = message.optString("date").take(32)
         if (!Regex("^[A-Za-z0-9_-]{1,90}$").matches(reservationId)) return
@@ -557,13 +557,18 @@ class SlotMonitor(
         val id = message.optString("reservationId").take(90)
         val date = message.optString("date").take(32)
         val reason = message.optString("reason").take(180)
-        prefs.edit().putString("booking_status", "Niepotwierdzona: " + reason)
-            .putString("booking_date", date)
-            .putString("booking_id", id).apply()
+        val change = prefs.edit().putString("booking_status", "Niepotwierdzona: " + reason)
+            .putString("booking_date", date).putString("booking_id", id)
+        // A server reservation ID can already represent a pending hold. Never
+        // attempt another booking until the user manually verifies that state.
+        if (id.isNotBlank()) change.putBoolean("auto_reserve", false)
+        change.apply()
         diagnostics = "Nie udało się potwierdzić zajęcia miejsca. " + reason
         event("Nieudana autorezerwacja: " + reason)
         val body = "Próba rezerwacji " + date.replace('T', ' ').take(16) +
-            " nie została potwierdzona. Sprawdź portal. " + reason
+            " nie została potwierdzona. Sprawdź portal" +
+            if (id.isNotBlank()) " (automatyczne próby wstrzymane). " + reason
+            else ". " + reason
         notify(body, "ZłapEgzamin – sprawdź rezerwację")
         sendTelegram("ZłapEgzamin: " + body)
     }
