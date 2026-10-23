@@ -17,6 +17,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
+import android.text.InputType
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -229,7 +231,7 @@ class DashboardActivity : Activity() {
         put(tools, action("↗  Zaloguj się przez przeglądarkę") { outside(Uri.parse(portal)) }, 11)
         put(tools, action("🔔  Test powiadomienia", false) { monitor.testNotification() })
         put(page, tools, 20)
-        put(page, text("Wersja 0.3 • Monitoring co minimum 5 minut tylko podczas używania aplikacji.\n"+
+        put(page, text("Wersja 3.7 Android • Monitoring co minimum 15 minut tylko podczas używania aplikacji.\n"+
             "Bez działania w tle i bez automatycznej rezerwacji.", 12f, muted))
     }
     private fun settingsPage() {
@@ -260,12 +262,22 @@ class DashboardActivity : Activity() {
         put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
         put(page, alerts, 19)
 
+        val telegram = card()
+        put(telegram, text("TELEGRAM", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(telegram, text("Wpisz token bota i Chat ID. Dane pozostają w pamięci aplikacji.", 14f, muted), 12)
+        val token = EditText(this).apply { hint = "Token Telegram"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val chat = EditText(this).apply { hint = "Chat ID"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT }
+        put(telegram, token, 8)
+        put(telegram, chat, 12)
+        put(telegram, action("Zapisz ustawienia Telegram") { monitor.configureTelegram(token.text.toString(), chat.text.toString()); Toast.makeText(this, "Zapisano", Toast.LENGTH_SHORT).show() }, 10)
+        put(telegram, action("Wyślij test Telegram", false) { monitor.testTelegram() })
+        put(page, telegram, 19)
         val guide = card()
         put(guide, text("JAK WŁĄCZYĆ MONITOR", 12f, Color.rgb(143, 182, 255), true), 12)
         put(guide, text("1. Przejdź do Portal i zaloguj się.\n"+
             "2. Wybierz MORD Kraków, kategorię B i egzamin praktyczny.\n"+
             "3. Otwórz na portalu listę dostępnych terminów.\n"+
-            "4. Możesz wrócić do Start — aplikacja sprawdza terminy co minimum 5 minut, gdy jest otwarta.\n\n"+
+            "4. Możesz wrócić do Start — aplikacja sprawdza terminy co minimum 15 minut, gdy jest otwarta.\n\n"+
             "Gdy sesja wygaśnie, konieczne będzie ponowne zalogowanie. "+
             "Nie działa po zminimalizowaniu lub zamknięciu aplikacji.", 14f, muted))
         put(page, guide, 18)
