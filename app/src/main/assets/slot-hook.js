@@ -284,6 +284,9 @@
       }
     } catch (_) {}
   }
+  window.__zlapExtendNow = function () {
+    return extendWhenPrompted();
+  };
   window.__zlapSessionTick = function () {
     detectExpiredSession();
     extendWhenPrompted();
