@@ -164,19 +164,9 @@ class DashboardActivity : Activity() {
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
-        // Android 15 enforces edge-to-edge for targetSdk 35. Keep the content
-        // below the status bar and the tabs above gesture/three-button navigation.
+        // Let Android reserve both system-bar areas; avoid mixing root and tab padding.
         if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(false)
-            root.setOnApplyWindowInsetsListener { view, insets ->
-                val bars = insets.getInsets(
-                    WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars() or
-                        WindowInsets.Type.displayCutout()
-                )
-                view.setPadding(bars.left, bars.top, bars.right, 0)
-                navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + bars.bottom)
-                insets
-            }
+            window.setDecorFitsSystemWindows(true)
         } else {
             root.fitsSystemWindows = true
         }
@@ -243,7 +233,8 @@ class DashboardActivity : Activity() {
             if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
         }, 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
-        put(page, status, 20)
+        put(page, status, 12)
+        put(page, action("⚙  Ustawienia: interwał, daty, Telegram", false) { show("settings") }, 20)
 
         put(page, text("Odczytane terminy", 19f, Color.WHITE, true), 12)
         val results = card()
@@ -340,7 +331,7 @@ class DashboardActivity : Activity() {
             "3. Otwórz na portalu listę dostępnych terminów.\n"+
             "4. Możesz wrócić do Start — aplikacja sprawdza terminy zgodnie z ustawionym interwałem, gdy jest otwarta.\n\n"+
             "Gdy sesja wygaśnie, konieczne będzie ponowne zalogowanie. "+
-            "Nie działa po zminimalizowaniu lub zamknięciu aplikacji.", 14f, muted))
+            "Po zminimalizowaniu monitor może działać z powiadomieniem, ale po zamknięciu procesu wymaga ponownego uruchomienia.", 14f, muted))
         put(page, guide, 18)
         put(page, action("Otwórz Portal") { show("portal") })
     }
