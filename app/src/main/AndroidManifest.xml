@@ -2,7 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <application android:label="ZłapEgzamin TEST" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+        <service android:name=".MonitorForegroundService" android:exported="false" android:foregroundServiceType="dataSync" android:stopWithTask="false"/>
         <activity android:name=".DashboardActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
