@@ -35,17 +35,11 @@ class SlotMonitor(
 ) {
     private val prefs = activity.getSharedPreferences("slot_monitor_v1", Context.MODE_PRIVATE)
     private val handler = Handler(Looper.getMainLooper())
-    private val intervalMs = 15 * 60 * 1000L
+    val intervalSeconds: Int get() = prefs.getInt("interval_seconds", 30)
+    private val intervalMs: Long get() = intervalSeconds * 1000L
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
-    private fun observed(): List<Long> = (prefs.getString("request_times", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.filter { it > System.currentTimeMillis() - hourMs }.sorted()
-    private fun recordRequest() { prefs.edit().putString("request_times", (observed() + System.currentTimeMillis()).joinToString(",")).apply() }
-    private fun nextAllowed(): Long {
-        val times = observed()
-        val last = times.lastOrNull()?.plus(intervalMs) ?: 0L
-        val budget = if (times.size >= 4) times[times.size - 4] + hourMs + 45_000L else 0L
-        return maxOf(blockedUntil, last, budget)
-    }
+    private fun nextAllowed(): Long = maxOf(blockedUntil, lastAttemptAt + intervalMs)
     var supported = false
         private set
     var requestReady = false
@@ -80,7 +74,6 @@ class SlotMonitor(
             if (enabled && supported && requestReady && now >= blockedUntil &&
                 now >= nextAllowed() && now - lastAttemptAt >= intervalMs && isPortal(web.url)) {
                 lastAttemptAt = now
-                recordRequest()
                 web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();", null)
             }
             handler.postDelayed(this, 15_000L)
@@ -146,6 +139,12 @@ class SlotMonitor(
         onUpdate()
     }
 
+    fun setInterval(seconds: Int) {
+        if (seconds !in 10..3600) return
+        prefs.edit().putInt("interval_seconds", seconds).apply()
+        onUpdate()
+    }
+
     fun setNotifyFirst(value: Boolean) {
         prefs.edit().putBoolean("notify_first", value).apply()
         onUpdate()
@@ -161,7 +160,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Monitoring włączony. Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Kolejny odczyt po: " + clock(nextAllowed()) + ". Zapytania ostatniej godziny: " + observed().size + "/4."
+                ". Interwał: " + intervalSeconds + " s. Kolejny odczyt po: " + clock(nextAllowed()) + "."
         }
     }
 
