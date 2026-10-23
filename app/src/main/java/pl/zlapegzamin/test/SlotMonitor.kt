@@ -20,6 +20,10 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.net.URL
+import java.net.HttpURLConnection
+import java.net.URLEncoder
+import kotlin.concurrent.thread
 
 /** Observes only the user's authenticated OneCenterExam requests inside WebView.
  *  Polling works while the activity is on screen, not as a background service.
@@ -31,7 +35,17 @@ class SlotMonitor(
 ) {
     private val prefs = activity.getSharedPreferences("slot_monitor_v1", Context.MODE_PRIVATE)
     private val handler = Handler(Looper.getMainLooper())
-    private val intervalMs = 5 * 60 * 1000L
+    private val intervalMs = 15 * 60 * 1000L
+    private var strikes = prefs.getInt("strikes", 0)
+    private val hourMs = 60 * 60 * 1000L
+    private fun observed(): List<Long> = (prefs.getString("request_times", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.filter { it > System.currentTimeMillis() - hourMs }.sorted()
+    private fun recordRequest() { prefs.edit().putString("request_times", (observed() + System.currentTimeMillis()).joinToString(",")).apply() }
+    private fun nextAllowed(): Long {
+        val times = observed()
+        val last = times.lastOrNull()?.plus(intervalMs) ?: 0L
+        val budget = if (times.size >= 4) times[times.size - 4] + hourMs + 45_000L else 0L
+        return maxOf(blockedUntil, last, budget)
+    }
     var supported = false
         private set
     var requestReady = false
@@ -64,8 +78,9 @@ class SlotMonitor(
             if (!resumed || destroyed) return
             val now = System.currentTimeMillis()
             if (enabled && supported && requestReady && now >= blockedUntil &&
-                now - lastAttemptAt >= intervalMs && isPortal(web.url)) {
+                now >= nextAllowed() && now - lastAttemptAt >= intervalMs && isPortal(web.url)) {
                 lastAttemptAt = now
+                recordRequest()
                 web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();", null)
             }
             handler.postDelayed(this, 15_000L)
@@ -146,7 +161,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Monitoring włączony. Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Następny automatyczny odczyt nie wcześniej niż za 5 minut."
+                ". Kolejny odczyt po: " + clock(nextAllowed()) + ". Zapytania ostatniej godziny: " + observed().size + "/4."
         }
     }
 
@@ -161,6 +176,11 @@ class SlotMonitor(
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
                 "response" -> diagnostics = "Odpowiedź API: HTTP " + message.optInt("status")
+                "hook" -> { lastError = "Skrypt monitorowania uruchomiony. Czekam na żądanie OneCenterExam." }
+                "endpoint" -> { lastError = "Wykryto żądanie OneCenterExam." }
+                "filter" -> { lastError = "Nie rozpoznano filtrów żądania API." }
+                "body" -> { lastError = "Nie odczytano treści żądania API." }
+                "response" -> { lastError = "API odpowiedziało HTTP " + message.optInt("status") }
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
@@ -175,7 +195,10 @@ class SlotMonitor(
                     val waitMs = if (seconds != null && seconds in 1..86400) {
                         seconds * 1000L + 60_000L
                     } else 30 * 60 * 1000L
-                    val until = maxOf(blockedUntil, System.currentTimeMillis() + waitMs)
+                    strikes = minOf(10, strikes + 1)
+                    prefs.edit().putInt("strikes", strikes).apply()
+                    val fallback = minOf(4 * hourMs, 30 * 60_000L * (1L shl minOf(3, strikes - 1)))
+                    val until = maxOf(blockedUntil, System.currentTimeMillis() + if (seconds == null) fallback else waitMs)
                     prefs.edit().putLong("blocked_until", until).apply()
                     lastError = "Portal ograniczył liczbę żądań (HTTP 429)."
                 }
@@ -235,8 +258,36 @@ class SlotMonitor(
                     ". Najbliższy nowy: " + date
             }
             notify(body)
+            sendTelegram(body)
         }
     }
+
+    fun configureTelegram(token: String, chatId: String) {
+        prefs.edit().putString("tg_token", token.trim()).putString("tg_chat", chatId.trim()).apply()
+        onUpdate()
+    }
+    fun telegramConfigured(): Boolean = !prefs.getString("tg_token", "").isNullOrBlank() && !prefs.getString("tg_chat", "").isNullOrBlank()
+    private fun sendTelegram(message: String) {
+        val token = prefs.getString("tg_token", "") ?: ""
+        val chat = prefs.getString("tg_chat", "") ?: ""
+        if (token.isBlank() || chat.isBlank()) return
+        thread(name = "telegram-alert") {
+            try {
+                val url = URL("https://api.telegram.org/bot" + token + "/sendMessage")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                conn.doOutput = true
+                val data = "chat_id=" + URLEncoder.encode(chat, "UTF-8") + "&text=" + URLEncoder.encode(message, "UTF-8")
+                conn.outputStream.use { it.write(data.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                conn.disconnect()
+                if (code !in 200..299) activity.runOnUiThread { lastError = "Telegram HTTP " + code; onUpdate() }
+            } catch (_: Exception) { activity.runOnUiThread { lastError = "Błąd połączenia Telegram."; onUpdate() } }
+        }
+    }
+    fun testTelegram() { sendTelegram("ZłapEgzamin Android: test Telegram (to nie jest wolny termin).") }
 
     fun testNotification() {
         notify("To jest test powiadomienia ZłapEgzamin, nie rzeczywisty termin egzaminu.")
