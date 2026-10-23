@@ -307,24 +307,6 @@ class DashboardActivity : Activity() {
         put(preferences, info("Rodzaj", "Praktyczny"))
         put(page, preferences, 19)
 
-        val debug = card()
-        put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
-        put(debug, text(monitor.diagnostics, 14f, muted), 12)
-        put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
-        put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
-        put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
-        put(page, debug, 19)
-
-        val alerts = card()
-        put(alerts, text("POWIADOMIENIA NA TELEFONIE", 12f, Color.rgb(143, 182, 255), true), 12)
-        put(alerts, text("Domyślnie pierwszy prawdziwy odczyt ustala listę znanych terminów.", 14f, muted), 14)
-        put(alerts, action(if (monitor.notifyFirst) "Powiadom też przy pierwszym odczycie: TAK"
-            else "Powiadom też przy pierwszym odczycie: NIE", false) {
-            monitor.setNotifyFirst(!monitor.notifyFirst)
-        }, 12)
-        put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
-        put(page, alerts, 19)
-
         val dates = card()
         put(dates, text("ZAKRES DAT EGZAMINU", 12f, Color.rgb(143, 182, 255), true), 12)
         put(dates, text("Powiadomienia tylko o terminach w wybranym zakresie. Nie zmienia to dat wyszukiwanych przez portal.", 13f, muted), 12)
@@ -379,6 +361,39 @@ class DashboardActivity : Activity() {
             else monitor.setInterval(value)
         })
         put(page, frequency, 19)
+        val debug = card()
+        put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(debug, text(monitor.diagnostics, 14f, muted), 12)
+        put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
+        put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
+        put(debug, text("Zapytania z ostatniej godziny: " + monitor.searchesThisHour + "/4", 13f, muted), 10)
+        put(debug, text("Blokada HTTP 429: " +
+            (if (monitor.blockedUntil > System.currentTimeMillis())
+                SimpleDateFormat("dd.MM HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.blockedUntil))
+             else "brak"), 13f, muted), 12)
+        put(debug, action("Kopiuj diagnostykę", false) {
+            val report = "ZłapEgzamin Android\\n" +
+                "Status: " + monitor.status() + "\\n" +
+                "Diagnostyka: " + monitor.diagnostics + "\\n" +
+                "Błąd: " + monitor.lastError + "\\n" +
+                "HTTP/h: " + monitor.searchesThisHour
+            val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("ZłapEgzamin diagnostyka", report))
+            Toast.makeText(this, "Skopiowano diagnostykę bez danych logowania", Toast.LENGTH_LONG).show()
+        }, 10)
+        put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
+        put(page, debug, 19)
+
+        val alerts = card()
+        put(alerts, text("POWIADOMIENIA NA TELEFONIE", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(alerts, text("Domyślnie pierwszy prawdziwy odczyt ustala listę znanych terminów.", 14f, muted), 14)
+        put(alerts, action(if (monitor.notifyFirst) "Powiadom też przy pierwszym odczycie: TAK"
+            else "Powiadom też przy pierwszym odczycie: NIE", false) {
+            monitor.setNotifyFirst(!monitor.notifyFirst)
+        }, 12)
+        put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
+        put(page, alerts, 19)
+
         val telegram = card()
         put(telegram, text("TELEGRAM", 12f, Color.rgb(143, 182, 255), true), 12)
         put(telegram, text(if (monitor.telegramConfigured()) "Telegram skonfigurowany. Wpisz oba pola tylko, aby zmienić dane." else "Wpisz token bota i Chat ID. Dane pozostają na telefonie.", 14f, muted), 12)
