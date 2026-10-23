@@ -134,7 +134,7 @@
       if (!watchThis && isTarget(url) && input && typeof input.clone === 'function') {
         try { requestBody = input.clone().text(); } catch (_) {}
       }
-      if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; send({kind:'request'}); }
+      if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; send({kind:'request', source:'portal'}); }
       return fetchOriginal.apply(this, arguments).then(function (res) {
         if (isTarget(url)) requestInFlight = false;
         if (hadAuthenticatedRequest && /\/jwt\/refresh/i.test(String(url)) &&
@@ -183,7 +183,7 @@
     }
     if (isTarget(this.__zlapURL)) {
       lastRequest = Date.now(); requestInFlight = true;
-      send({kind:'request'});
+      send({kind:'request', source:'portal'});
       this.addEventListener('loadend', function () { requestInFlight = false; }, {once:true});
     }
     return sendOriginal.apply(this, arguments);
@@ -316,7 +316,7 @@
         (mode !== 'manual' && Date.now() - lastRequest < 15000)) return false;
     running = true;
     lastRequest = Date.now();
-    send({kind:'request'});
+    send({kind:'request', source: mode === 'manual' ? 'manual' : 'automatic'});
     fetchOriginal.call(window, saved.url, {
       method: 'POST',
       body: saved.body,
