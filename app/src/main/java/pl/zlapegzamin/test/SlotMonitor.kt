@@ -188,6 +188,7 @@ class SlotMonitor(
             val message = JSONObject(raw)
             when (message.optString("kind")) {
                 "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
+                "candidate" -> { if (!requestReady) diagnostics = "Wykryto ścieżkę API: " + message.optString("path").take(100) + ". Sprawdzanie zgodności..." }
                 "endpoint" -> { lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..." }
                 "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
