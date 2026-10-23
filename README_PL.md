@@ -1,33 +1,53 @@
-# ZłapEgzamin Android 0.3 — monitoring i powiadomienia (test)
+# ZłapEgzamin Android 0.5 beta
 
-Aplikacja Android z własnym panelem, portalem info-kierowca.pl i **automatycznym, tylko odczytowym** sprawdzaniem wolnych terminów egzaminu praktycznego kategorii B w MORD Kraków (identyfikator ośrodka 21).
+Niezależna aplikacja do **podglądu wolnych terminów egzaminu praktycznego kategorii B w MORD Kraków** przez własną, zalogowaną sesję portalu info-kierowca.pl.
 
-## Jak uruchomić
-1. Zainstaluj najnowsze APK z **GitHub Actions → ZlapEgzamin-APK**.
-2. Zezwól na **powiadomienia** na Androidzie 13+.
-3. Otwórz zakładkę **Portal** i zaloguj się **wewnątrz aplikacji**.
-4. Wybierz **MORD Kraków → B → praktyczny** i przejdź do listy egzaminów, żeby portal pobrał `OneCenterExam`.
-5. Wróć do zakładki **Start**. Jeśli monitor pokazuje ostatni odczyt, został połączony z listą terminów. Gdy wyświetla prośbę o wybranie egzaminu, powtórz ten krok.
-6. **Pozostaw aplikację otwartą na ekranie**. Podczas korzystania z niej ponownie sprawdzi termin nie częściej niż co 5 minut. Po zamknięciu lub zminimalizowaniu aplikacji monitorowanie jest wstrzymywane.
-7. Nowy termin (którego brakowało w poprzedniej poprawnej odpowiedzi) wywoła powiadomienie Android. Przycisk **Wyślij test powiadomienia** w Opcjach pozwala sprawdzić uprawnienia bez udawania dostępności.
+## Co nowego
 
-## Jak działa
-- Skrypt w WebView obserwuje rzeczywistą odpowiedź endpointu `/Schedules/user/OneCenterExam`.
-- Zapamiętuje wyłącznie ostatnie **wybrane przez Ciebie** zapytanie o ośrodek 21 i kategorię B. Kolejne odczyty używają sesji portalu w obrębie zalogowanego WebView, **bez wpisywania numeru PKK, loginu ani hasła w kodzie**.
-- Ze zwróconej struktury `examCollectionForDay[].examCollections[]` wybiera tylko praktyczne egzaminy z `practiceId`, `practiceDateTime` i `placePracticeAmount > 0`.
-- Pierwszy odczyt buduje punkt odniesienia. Nowe identyfikatory terminów powodują alert, a znane nie wywołują powtarzanych alertów. W **Opcjach** możesz też włączyć alarm przy pierwszym odczycie.
-- Odczyt ma limit 5 minut. Po HTTP 429 monitor blokuje dodatkowe sprawdzanie przynajmniej na 30 minut lub na czas wskazany przez portal. Po wygaśnięciu sesji użytkownik musi zalogować się ponownie.
+- Jasny, mobilny interfejs inspirowany sposobem nawigacji aplikacji do terminów egzaminacyjnych. Własne logo i własny kod.
+- Trzy zakładki: **Start**, **Portal**, **Opcje**.
+- **Kalendarz miesięczny** — niebieskie dni pochodzą z ostatniego poprawnego odczytu. Kliknięcie pokazuje godziny; to nie jest gwarancja aktualnej dostępności.
+- Lista ostatnio widzianych wolnych terminów.
+- Zakres dat **Od–Do**, wybór 7 / 14 / 30 dni, własny interwał i gotowe ustawienia.
+- Status połączenia, liczba prób w godzinie, najwcześniejszy czas następnego odczytu, diagnostyka kopiowana bez danych logowania.
+- Lokalne powiadomienia o nowo pojawiających się terminach oraz opcjonalne powiadomienia Telegram.
+- Ostrzeżenia o **HTTP 429**, braku odczytów i wygaśnięciu sesji.
 
-## Ograniczenia
-- **To wciąż wersja testowa.** Mechanizm jest zaimplementowany, ale nie został przetestowany na rzeczywiście zalogowanym koncie i fizycznym telefonie; portal może zmienić API, sposób uwierzytelniania, strukturę odpowiedzi i limity.
-- **Nie działa w tle, przy wyłączonym ekranie ani po zamknięciu aplikacji.** Brak stałego serwera i nieobecna usługa systemowa.
-- **Nie rezerwuje egzaminu** ani nie wykonuje płatności.
-- Otworzenie portalu w **zewnętrznej przeglądarce** nie przenosi jej zalogowanej sesji do monitorowania w WebView.
-- Nie ma Telegrama w tej wersji — powiadomienia są **lokalne, na telefonie**.
-- Jedno odczytanie odpowiada zakresowi dat wybranemu w portalu. Jeżeli zakres w portalu zmieni się, ponownie wybierz go, aby monitor przechwycił nowe zapytanie.
-- Aplikacja działa tylko jeśli Android System WebView obsługuje `WEB_MESSAGE_LISTENER` i `DOCUMENT_START_SCRIPT`.
+## Obsługa limitów
+
+**Ustawienie interwału 30 sekund NIE oznacza pobierania danych co 30 sekund.**
+
+Wersja 0.5 ma **trwały licznik faktycznych zapytań** do obserwowanego API, również tych ręcznie wywołanych w WebView. Dla automatycznego monitorowania przyjmuje zachowawczy limit lokalny:
+- co najmniej **15 minut** pomiędzy zapytaniami,
+- maksymalnie **4 zapytania na godzinę**,
+- blokada po HTTP 429 na czas wskazany w nagłówku `Retry-After` lub na rosnący czas awaryjny,
+- czas blokady i godziny żądań zostają zachowane po restarcie aplikacji.
+
+To **nie omija limitów** portalu. Portal może mieć także inne, niższe albo zmienne ograniczenia; ręczne sprawdzanie w innych urządzeniach również może mieć znaczenie.
+
+## Uruchomienie
+
+1. Pobierz APK ze strony **Releases** projektu lub artefakt `ZlapEgzamin-APK` z GitHub Actions.
+2. Zainstaluj na Androidzie i pozwól na powiadomienia.
+3. W zakładce **Portal** zaloguj się do info-kierowca.pl wewnątrz aplikacji.
+4. Wybierz MORD Kraków, kategorię B i egzamin praktyczny, następnie wyświetl dostępne terminy.
+5. Na **Start** sprawdź stan połączenia i ostatni odczyt; w **Opcjach** ustaw daty, interwał i Telegram.
+
+Logowanie przez **zewnętrzną przeglądarkę** nie przekazuje sesji do WebView. mObywatel może wymagać ręcznego potwierdzenia logowania.
+
+## Ważne ograniczenia wersji beta
+
+- **Brak autorezerwacji** — aplikacja wyłącznie obserwuje terminy. Nie pobiera opłat i nie tworzy rezerwacji.
+- Usługa pierwszoplanowa może utrzymywać proces podczas minimalizacji, ale monitor wciąż używa WebView powiązanego z ekranem aplikacji. **Po usunięciu procesu lub zamknięciu Activity sprawdzanie się zatrzymuje**; Android może też ograniczać timery w tle. Nie jest to jeszcze niezawodne działanie 24/7.
+- Automatyczne kliknięcie „Przedłuż sesję” jest wykonywane tylko przy widocznym komunikacie portalu. Jeśli portal wymaga mObywatela/ponownego logowania, aplikacja nie może odnowić tożsamości samodzielnie.
+- Struktura API portalu może się zmieniać. Nie przeprowadzono kompleksowych testów na rzeczywiście zalogowanym koncie i konkretnym telefonie.
 
 ## Bezpieczeństwo
-Skrypt nie wysyła do kodu Androida haseł, ciasteczek, numerów PKK ani treści żądań. Do aplikacji trafiają tylko identyfikatory, daty i liczba wolnych miejsc. Aplikacja nie wysyła żądań tworzących lub potwierdzających rezerwację.
 
-Używaj zgodnie z regulaminem portalu i nie próbuj obchodzić limitów HTTP 429.
+Hasła, PKK i treść przechwyconego żądania pozostają w zalogowanym WebView. Do komponentu monitorowania przekazywane są wyłącznie informacje o terminach i stanie zapytań. Telegram jest opcjonalny; jego token i Chat ID są przechowywane lokalnie w ustawieniach aplikacji. Aplikacja ma `allowBackup=false`.
+
+## Budowanie
+
+Workflow `.github/workflows/build-apk.yml` kompiluje poleceniem `gradle assembleDebug --no-daemon` i publikuje `app-debug.apk` w artefakcie `ZlapEgzamin-APK`. Commit oznaczony `[apk]` publikuje dodatkowo plik `ZlapEgzamin-Android.apk` jako zasób GitHub Release umożliwiający bezpośrednie pobranie (bez ZIP).
+
+Projekt nie jest związany z właścicielem ZłapTermin ani portalem info-kierowca.pl.
