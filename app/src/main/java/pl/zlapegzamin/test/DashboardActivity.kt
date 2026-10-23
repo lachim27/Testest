@@ -33,17 +33,24 @@ import android.widget.TextView
 import android.widget.Toast
 
 class DashboardActivity : Activity() {
-    private val bg = Color.rgb(246, 249, 253)
-    private val cardBg = Color.WHITE
-    private val ink = Color.rgb(28, 43, 70)
-    private val muted = Color.rgb(99, 115, 137)
-    private val blue = Color.rgb(42, 110, 234)
+    private val uiPrefs by lazy { getSharedPreferences("zlap_ui_v1", MODE_PRIVATE) }
+    private val darkMode: Boolean get() = uiPrefs.getBoolean("dark_mode", false)
+    private val bg: Int get() = if (darkMode) Color.rgb(12, 19, 32) else Color.rgb(246, 249, 253)
+    private val cardBg: Int get() = if (darkMode) Color.rgb(25, 36, 54) else Color.WHITE
+    private val ink: Int get() = if (darkMode) Color.rgb(238, 244, 255) else Color.rgb(28, 43, 70)
+    private val muted: Int get() = if (darkMode) Color.rgb(169, 183, 204) else Color.rgb(99, 115, 137)
+    private val blue: Int get() = if (darkMode) Color.rgb(113, 163, 255) else Color.rgb(42, 110, 234)
+    private val paleBlue: Int get() = if (darkMode) Color.rgb(36, 57, 89) else Color.rgb(233, 241, 255)
+    private val lineColor: Int get() = if (darkMode) Color.rgb(54, 71, 97) else Color.rgb(229, 235, 244)
     private val green = Color.rgb(8, 142, 101)
     private val portal = "https://info-kierowca.pl/reservation"
     private lateinit var pages: FrameLayout
     private lateinit var browserPane: LinearLayout
     private lateinit var browser: WebView
     private lateinit var navigation: LinearLayout
+    private lateinit var appRoot: LinearLayout
+    private lateinit var headerBar: LinearLayout
+    private lateinit var portalToolbar: LinearLayout
     private lateinit var monitor: SlotMonitor
     private var tab = "start"
     private var calendarMonthOffset = 0
@@ -70,14 +77,14 @@ class DashboardActivity : Activity() {
         background = GradientDrawable().apply {
             setColor(cardBg)
             cornerRadius = dp(20).toFloat()
-            setStroke(dp(1), Color.rgb(229, 235, 244))
+            setStroke(dp(1), lineColor)
         }
         elevation = dp(1).toFloat()
         setPadding(dp(19), dp(19), dp(19), dp(19))
     }
     private fun action(title: String, bright: Boolean = true, perform: () -> Unit) =
         text(title, 15f, if (bright) Color.WHITE else blue, true).apply {
-            background = round(if (bright) blue else Color.rgb(233, 241, 255), 12)
+            background = round(if (bright) blue else paleBlue, 12)
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(15), dp(12), dp(15))
             setOnClickListener { perform() }
@@ -93,6 +100,29 @@ class DashboardActivity : Activity() {
             Toast.makeText(this, "Nie można otworzyć tego linku", Toast.LENGTH_LONG).show()
         }
     }
+    private fun applyTheme() {
+        window.statusBarColor = if (darkMode) bg else Color.rgb(42, 110, 234)
+        window.navigationBarColor = bg
+        window.decorView.systemUiVisibility =
+            if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        appRoot.setBackgroundColor(bg)
+        headerBar.setBackgroundColor(cardBg)
+        headerBar.removeAllViews()
+        val brand = column()
+        put(brand, text("ZłapEgzamin", 25f, ink, true), 2)
+        put(brand, text("Terminy prawa jazdy", 12f, muted))
+        headerBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        headerBar.addView(text("●  MONITOR", 12f, green, true))
+        portalToolbar.removeAllViews()
+        portalToolbar.addView(text("info-kierowca.pl", 15f, ink, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        portalToolbar.addView(text("↗  Przeglądarka", 13f, blue, true).apply {
+            setOnClickListener { outside(Uri.parse(portal)) }
+        })
+        navigation.setBackgroundColor(cardBg)
+        show(tab)
+    }
+
     private fun go(uri: Uri): Boolean {
         return when (uri.scheme?.lowercase()) {
             "https", "http", "about", "data", "blob" -> false
@@ -136,15 +166,17 @@ class DashboardActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(42, 110, 234)
-        window.navigationBarColor = Color.WHITE
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.statusBarColor = if (darkMode) Color.rgb(12, 19, 32) else Color.rgb(42, 110, 234)
+        window.navigationBarColor = bg
+        window.decorView.systemUiVisibility = if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         val root = column().apply { setBackgroundColor(bg) }
+        appRoot = root
         val header = row().apply {
             setPadding(dp(22), dp(17), dp(22), dp(17))
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(cardBg)
         }
+        headerBar = header
         val brand = column()
         put(brand, text("ZłapEgzamin", 25f, ink, true), 2)
         put(brand, text("Terminy prawa jazdy", 12f, muted))
@@ -159,6 +191,7 @@ class DashboardActivity : Activity() {
 
         browserPane = column()
         val toolbar = row().apply { setPadding(dp(16), dp(7), dp(16), dp(13)) }
+        portalToolbar = toolbar
         toolbar.addView(text("info-kierowca.pl", 15f, ink, true),
             LinearLayout.LayoutParams(0, -2, 1f))
         toolbar.addView(text("↗  Przeglądarka", 13f, blue, true).apply {
@@ -188,7 +221,7 @@ class DashboardActivity : Activity() {
         body.addView(browserPane, FrameLayout.LayoutParams(-1, -1))
 
         navigation = row().apply {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(cardBg)
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
@@ -246,7 +279,7 @@ class DashboardActivity : Activity() {
             val selected = id == which
             val label = text(title, 12f, if (selected) blue else muted, selected).apply {
                 gravity = Gravity.CENTER
-                background = round(if (selected) Color.rgb(226, 237, 255) else Color.WHITE, 12)
+                background = round(if (selected) paleBlue else cardBg, 12)
                 setPadding(dp(4), dp(13), dp(4), dp(13))
                 setOnClickListener { if (id != tab) show(id) }
             }
@@ -438,6 +471,15 @@ class DashboardActivity : Activity() {
         val page = scroll()
         put(page, text("Ustawienia", 24f, ink, true), 6)
         put(page, text("Powiadomienia i monitorowanie", 14f, muted), 18)
+        val appearance = card()
+        put(appearance, text("WYGLĄD APLIKACJI", 12f, blue, true), 12)
+        put(appearance, text("Aktualny motyw: " + if (darkMode) "ciemny" else "jasny",
+            15f, ink, true), 13)
+        put(appearance, action(if (darkMode) "☀  Włącz jasny motyw" else "☾  Włącz ciemny motyw", false) {
+            uiPrefs.edit().putBoolean("dark_mode", !darkMode).apply()
+            applyTheme()
+        })
+        put(page, appearance, 19)
         val preferences = card()
         put(preferences, text("WYBRANY EGZAMIN", 12f, Color.rgb(143, 182, 255), true), 17)
         put(preferences, info("Ośrodek", "MORD Kraków (ID 21)"), 17)
@@ -468,7 +510,7 @@ class DashboardActivity : Activity() {
             val button = text("$days dni", 14f, blue, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(6), dp(13), dp(6), dp(13))
-                background = round(Color.rgb(233, 241, 255), 12)
+                background = round(paleBlue, 12)
                 setOnClickListener {
                     val from = Calendar.getInstance()
                     from.add(Calendar.DAY_OF_MONTH, 2)
@@ -491,7 +533,12 @@ class DashboardActivity : Activity() {
         for (seconds in listOf(30, 60, 300, 900, 1800)) {
             put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) { monitor.setInterval(seconds) }, 8)
         }
-        val custom = EditText(this).apply { hint = "Własny interwał (10–3600 sekund)"; setTextColor(ink); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_NUMBER }
+        val custom = EditText(this).apply {
+            hint = "Własny interwał (10–3600 sekund)"
+            setTextColor(ink); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_NUMBER
+            background = round(paleBlue, 12)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
         put(frequency, custom, 10)
         put(frequency, action("Zapisz własny interwał") {
             val value = custom.text.toString().toIntOrNull()
@@ -535,8 +582,18 @@ class DashboardActivity : Activity() {
         val telegram = card()
         put(telegram, text("TELEGRAM", 12f, Color.rgb(143, 182, 255), true), 12)
         put(telegram, text(if (monitor.telegramConfigured()) "Telegram skonfigurowany. Wpisz oba pola tylko, aby zmienić dane." else "Wpisz token bota i Chat ID. Dane pozostają na telefonie.", 14f, muted), 12)
-        val token = EditText(this).apply { hint = "Token Telegram"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        val chat = EditText(this).apply { hint = "Chat ID"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT }
+        val token = EditText(this).apply {
+            hint = "Token Telegram"; setTextColor(ink); setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            background = round(paleBlue, 12)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val chat = EditText(this).apply {
+            hint = "Chat ID"; setTextColor(ink); setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_TEXT
+            background = round(paleBlue, 12)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
         put(telegram, token, 8)
         put(telegram, chat, 12)
         put(telegram, action("Zapisz ustawienia Telegram") {
