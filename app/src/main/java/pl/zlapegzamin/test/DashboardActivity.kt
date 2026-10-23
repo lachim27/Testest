@@ -33,11 +33,12 @@ import android.widget.TextView
 import android.widget.Toast
 
 class DashboardActivity : Activity() {
-    private val bg = Color.rgb(10, 16, 30)
-    private val cardBg = Color.rgb(21, 31, 51)
-    private val muted = Color.rgb(158, 174, 199)
-    private val blue = Color.rgb(53, 120, 246)
-    private val green = Color.rgb(81, 220, 163)
+    private val bg = Color.rgb(246, 249, 253)
+    private val cardBg = Color.WHITE
+    private val ink = Color.rgb(28, 43, 70)
+    private val muted = Color.rgb(99, 115, 137)
+    private val blue = Color.rgb(42, 110, 234)
+    private val green = Color.rgb(8, 142, 101)
     private val portal = "https://info-kierowca.pl/reservation"
     private lateinit var pages: FrameLayout
     private lateinit var browserPane: LinearLayout
@@ -54,7 +55,7 @@ class DashboardActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
     }
-    private fun text(s: String, size: Float = 15f, color: Int = Color.WHITE, bold: Boolean = false) =
+    private fun text(s: String, size: Float = 15f, color: Int = ink, bold: Boolean = false) =
         TextView(this).apply {
             this.text = s
             textSize = size
@@ -65,19 +66,24 @@ class DashboardActivity : Activity() {
         parent.addView(view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(bottom) })
     }
     private fun card() = column().apply {
-        background = round(cardBg, 20)
+        background = GradientDrawable().apply {
+            setColor(cardBg)
+            cornerRadius = dp(20).toFloat()
+            setStroke(dp(1), Color.rgb(229, 235, 244))
+        }
+        elevation = dp(1).toFloat()
         setPadding(dp(19), dp(19), dp(19), dp(19))
     }
     private fun action(title: String, bright: Boolean = true, perform: () -> Unit) =
-        text(title, 15f, if (bright) Color.WHITE else Color.rgb(164, 195, 255), true).apply {
-            background = round(if (bright) blue else Color.rgb(35, 53, 83), 12)
+        text(title, 15f, if (bright) Color.WHITE else blue, true).apply {
+            background = round(if (bright) blue else Color.rgb(233, 241, 255), 12)
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(15), dp(12), dp(15))
             setOnClickListener { perform() }
         }
     private fun info(key: String, value: String) = column().apply {
         put(this, text(key, 12f, muted), 5)
-        put(this, text(value, 16f, Color.WHITE, true))
+        put(this, text(value, 16f, ink, true))
     }
     private fun outside(uri: Uri) {
         try {
@@ -131,12 +137,15 @@ class DashboardActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        window.decorView.systemUiVisibility = 0
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         val root = column().apply { setBackgroundColor(bg) }
-        val header = row().apply { setPadding(dp(22), dp(18), dp(22), dp(18)) }
+        val header = row().apply {
+            setPadding(dp(22), dp(17), dp(22), dp(17))
+            setBackgroundColor(Color.WHITE)
+        }
         val brand = column()
-        put(brand, text("ZŁAP", 12f, Color.rgb(120, 172, 255), true))
-        put(brand, text("EGZAMIN", 26f, Color.WHITE, true))
+        put(brand, text("ZłapEgzamin", 25f, ink, true), 2)
+        put(brand, text("Terminy prawa jazdy", 12f, muted))
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(text("●  MONITOR", 12f, green, true))
         put(root, header)
@@ -148,9 +157,9 @@ class DashboardActivity : Activity() {
 
         browserPane = column()
         val toolbar = row().apply { setPadding(dp(16), dp(7), dp(16), dp(13)) }
-        toolbar.addView(text("info-kierowca.pl", 15f, Color.WHITE, true),
+        toolbar.addView(text("info-kierowca.pl", 15f, ink, true),
             LinearLayout.LayoutParams(0, -2, 1f))
-        toolbar.addView(text("↗  Przeglądarka", 13f, Color.rgb(170, 194, 255), true).apply {
+        toolbar.addView(text("↗  Przeglądarka", 13f, blue, true).apply {
             setOnClickListener { outside(Uri.parse(portal)) }
         })
         put(browserPane, toolbar)
@@ -177,32 +186,18 @@ class DashboardActivity : Activity() {
         body.addView(browserPane, FrameLayout.LayoutParams(-1, -1))
 
         navigation = row().apply {
-            setBackgroundColor(Color.rgb(16, 24, 42))
+            setBackgroundColor(Color.WHITE)
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
-        // Edge-to-edge is enforced on newer Android versions. Apply insets only
-        // to the header and bottom navigation, never twice to the root.
+        // Reserve real space for the system status and navigation bars.
+        // Never manually add their insets to app controls as well.
         if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(false)
-            val headerTop = dp(18)
-            val navBottom = dp(10)
-            root.setOnApplyWindowInsetsListener { _, insets ->
-                val status = insets.getInsets(
-                    WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
-                )
-                val nav = insets.getInsets(WindowInsets.Type.navigationBars())
-                header.setPadding(dp(22) + status.left, headerTop + status.top,
-                    dp(22) + status.right, dp(18))
-                navigation.setPadding(dp(12) + nav.left, dp(9),
-                    dp(12) + nav.right, navBottom + nav.bottom)
-                insets
-            }
+            window.setDecorFitsSystemWindows(true)
         } else {
             root.fitsSystemWindows = true
         }
         setContentView(root)
-        if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
 
         monitor = SlotMonitor(this, browser) {
             if (::pages.isInitialized && ::monitor.isInitialized && tab != "portal") show(tab)
@@ -237,9 +232,9 @@ class DashboardActivity : Activity() {
         for ((id, title) in listOf("start" to "⌂  Start", "portal" to "◎  Portal",
             "settings" to "⚙  Opcje")) {
             val selected = id == which
-            val label = text(title, 13f, if (selected) Color.WHITE else muted, selected).apply {
+            val label = text(title, 13f, if (selected) blue else muted, selected).apply {
                 gravity = Gravity.CENTER
-                background = round(if (selected) Color.rgb(42, 66, 108) else Color.rgb(16, 24, 42), 12)
+                background = round(if (selected) Color.rgb(226, 237, 255) else Color.WHITE, 12)
                 setPadding(dp(4), dp(13), dp(4), dp(13))
                 setOnClickListener { if (id != tab) show(id) }
             }
@@ -250,7 +245,7 @@ class DashboardActivity : Activity() {
     }
     private fun homePage() {
         val page = scroll()
-        put(page, text("Monitor terminów", 24f, Color.WHITE, true), 6)
+        put(page, text("Znajdź wcześniejszy egzamin", 23f, ink, true), 7)
         put(page, text("MORD Kraków • Kategoria B • Praktyczny", 14f, muted), 22)
 
         val status = card()
@@ -259,7 +254,11 @@ class DashboardActivity : Activity() {
         val stateLabel = when { !monitor.enabled -> "●  Wyłączone"; connected -> "●  Połączono"; else -> "●  Oczekiwanie na portal" }
         put(status, text(stateLabel,
             23f, if (connected) green else Color.rgb(255, 188, 105), true), 10)
-        put(status, text(monitor.status(), 14f, muted), 15)
+        put(status, text(monitor.status(), 14f, muted), 12)
+        put(status, text("Zapytania w ciągu godziny: " + monitor.searchesThisHour + "/4", 14f, ink, true), 5)
+        put(status, text("Najwcześniejsza kolejna próba: " +
+            SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.nextCheckAt)),
+            13f, muted), 15)
         put(status, action(if (monitor.enabled) "Wstrzymaj monitorowanie" else "Włącz monitorowanie") {
             monitor.setEnabled(!monitor.enabled)
             if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
@@ -268,29 +267,39 @@ class DashboardActivity : Activity() {
         put(page, status, 12)
         put(page, action("⚙  Ustawienia: interwał, daty, Telegram", false) { show("settings") }, 20)
 
-        put(page, text("Odczytane terminy", 19f, Color.WHITE, true), 12)
+        put(page, text("Dostępne terminy", 19f, ink, true), 12)
         val results = card()
         put(results, text("NAJBLIŻSZY TERMIN", 11f, Color.rgb(143, 182, 255), true), 10)
         put(results, text(monitor.earliest.ifBlank { "Jeszcze nieodczytany" },
-            23f, Color.WHITE, true), 12)
+            23f, ink, true), 12)
         put(results, text("Wolnych terminów w odczycie: " + monitor.slotCount, 14f, muted), 10)
         put(results, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 14f, muted), 14)
         put(results, action("Zobacz terminy w portalu", false) { show("portal") })
-        put(page, results, 20)
+        put(page, results, 18)
+        val datesList = monitor.recentSlots
+        if (datesList.isNotEmpty()) {
+            val upcoming = card()
+            put(upcoming, text("NAJBLIŻSZE W OSTATNIM ODCZYCIE", 12f, blue, true), 12)
+            for (date in datesList.take(8)) {
+                put(upcoming, text("  •  " + date.replace('T', ' ').take(16), 16f, ink), 9)
+            }
+            put(upcoming, text("Lista jest zapisana z ostatniego odczytu, dostępność może się zmienić.", 12f, muted))
+            put(page, upcoming, 20)
+        }
 
-        put(page, text("Szybkie działania", 19f, Color.WHITE, true), 12)
+        put(page, text("Szybkie działania", 19f, ink, true), 12)
         val tools = card()
         put(tools, action("↗  Zaloguj się przez przeglądarkę") { outside(Uri.parse(portal)) }, 11)
         put(tools, action("↻  Przedłuż sesję", false) { renewSession() }, 11)
         put(tools, action("🔔  Test powiadomienia", false) { monitor.testNotification() })
         put(page, tools, 20)
-        put(page, text("Wersja 3.7 Android • Interwał sprawdzania ustawiany ręcznie tylko podczas używania aplikacji.\n"+
+        put(page, text("ZłapEgzamin Android • Monitor sprawdza terminy w granicach limitów portalu.\n"+
             "Monitor w tle działa dopóki Android utrzymuje proces aplikacji; po zamknięciu lub ubiciu procesu zatrzyma się. Bez automatycznej rezerwacji.", 12f, muted))
     }
     private fun settingsPage() {
         val page = scroll()
-        put(page, text("Ustawienia", 24f, Color.WHITE, true), 6)
-        put(page, text("Powiadomienia i monitorowanie", 14f, muted), 22)
+        put(page, text("Ustawienia", 24f, ink, true), 6)
+        put(page, text("Powiadomienia i monitorowanie", 14f, muted), 18)
         val preferences = card()
         put(preferences, text("WYBRANY EGZAMIN", 12f, Color.rgb(143, 182, 255), true), 17)
         put(preferences, info("Ośrodek", "MORD Kraków (ID 21)"), 17)
@@ -333,15 +342,36 @@ class DashboardActivity : Activity() {
         }
         put(dates, action("Od: " + monitor.dateFrom.ifBlank { "wybierz datę" }, false) { pickDate(true) }, 10)
         put(dates, action("Do: " + monitor.dateTo.ifBlank { "wybierz datę" }, false) { pickDate(false) }, 10)
-        put(dates, action("Wyczyść zakres") { monitor.setDateRange("", "") })
+        put(dates, text("Szybki wybór zakresu", 13f, muted), 10)
+        val preset = row()
+        for (days in listOf(7, 14, 30)) {
+            val button = text("$days dni", 14f, blue, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(6), dp(13), dp(6), dp(13))
+                background = round(Color.rgb(233, 241, 255), 12)
+                setOnClickListener {
+                    val from = Calendar.getInstance()
+                    from.add(Calendar.DAY_OF_MONTH, 2)
+                    val to = Calendar.getInstance()
+                    to.add(Calendar.DAY_OF_MONTH, days)
+                    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    monitor.setDateRange(format.format(from.time), format.format(to.time))
+                }
+            }
+            preset.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(3); rightMargin = dp(3)
+            })
+        }
+        put(dates, preset, 10)
+        put(dates, action("Wyczyść zakres", false) { monitor.setDateRange("", "") })
         put(page, dates, 19)
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
-        put(frequency, text("Aktualnie: " + monitor.intervalSeconds + " sekund. Wybierz interwał:", 14f, muted), 12)
-        for (seconds in listOf(30, 60, 120, 300, 600)) {
+        put(frequency, text("Wybrano: " + monitor.intervalSeconds + " s. Dla ochrony przed HTTP 429 monitor wykonuje nie więcej niż 4 próby/h i zachowuje co najmniej 15 minut przerwy.", 14f, muted), 12)
+        for (seconds in listOf(30, 60, 300, 900, 1800)) {
             put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) { monitor.setInterval(seconds) }, 8)
         }
-        val custom = EditText(this).apply { hint = "Własny interwał (10–3600 sekund)"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_NUMBER }
+        val custom = EditText(this).apply { hint = "Własny interwał (10–3600 sekund)"; setTextColor(ink); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_NUMBER }
         put(frequency, custom, 10)
         put(frequency, action("Zapisz własny interwał") {
             val value = custom.text.toString().toIntOrNull()
@@ -351,12 +381,19 @@ class DashboardActivity : Activity() {
         put(page, frequency, 19)
         val telegram = card()
         put(telegram, text("TELEGRAM", 12f, Color.rgb(143, 182, 255), true), 12)
-        put(telegram, text("Wpisz token bota i Chat ID. Dane pozostają w pamięci aplikacji.", 14f, muted), 12)
+        put(telegram, text(if (monitor.telegramConfigured()) "Telegram skonfigurowany. Wpisz oba pola tylko, aby zmienić dane." else "Wpisz token bota i Chat ID. Dane pozostają na telefonie.", 14f, muted), 12)
         val token = EditText(this).apply { hint = "Token Telegram"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         val chat = EditText(this).apply { hint = "Chat ID"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT }
         put(telegram, token, 8)
         put(telegram, chat, 12)
-        put(telegram, action("Zapisz ustawienia Telegram") { monitor.configureTelegram(token.text.toString(), chat.text.toString()); Toast.makeText(this, "Zapisano", Toast.LENGTH_SHORT).show() }, 10)
+        put(telegram, action("Zapisz ustawienia Telegram") {
+            if (token.text.toString().isBlank() || chat.text.toString().isBlank()) {
+                Toast.makeText(this, "Podaj token i Chat ID", Toast.LENGTH_LONG).show()
+            } else {
+                monitor.configureTelegram(token.text.toString(), chat.text.toString())
+                Toast.makeText(this, "Zapisano", Toast.LENGTH_SHORT).show()
+            }
+        }, 10)
         put(telegram, action("Wyślij test Telegram", false) { monitor.testTelegram() })
         put(page, telegram, 19)
         val guide = card()
