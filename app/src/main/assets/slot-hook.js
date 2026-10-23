@@ -183,7 +183,7 @@
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
         var label = (node.innerText || node.value || node.getAttribute('aria-label') || '')
-          .replace(/\\s+/g, ' ').trim().toLowerCase();
+          .replace(/\s+/g, ' ').trim().toLowerCase();
         if (/przedłuż\s+sesj|przedluz\s+sesj|extend\s+session|pozostań\s+zalogowan/.test(label)) {
           candidate = node;
           break;
