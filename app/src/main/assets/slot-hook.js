@@ -1,6 +1,6 @@
-/* ZlapEgzamin: read-only monitoring of an authenticated info-kierowca.pl tab.
- * Only sends filtered dates and counts to Android. Credentials, PKK and
- * request bodies stay inside this page's JavaScript context. */
+/* ZlapEgzamin authenticated portal helper. Auto-hold is disabled by default
+ * and started ONLY after an explicit opt-in in the Android settings.
+ * Login credentials, PKK and auth headers remain inside this page's context. */
 (function () {
   'use strict';
   if (window.__zlapHookV3) return;
@@ -330,6 +330,141 @@
     }).catch(function () {
       send({kind:'network'});
     }).then(function () { running = false; });
+    return true;
+  };
+
+  // Optional temporary, unpaid reservation. Never assume a create response
+  // means that a slot has actually been held.
+  var zlapBookingBusy = false;
+  var zlapBookingCompleted = false;
+  var zlapBookingKeys = {};
+  function zlapSafeId(value) {
+    return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,90}$/.test(value);
+  }
+  function zlapBookingHeaders(accept) {
+    var headers = new Headers(saved && saved.headers ? saved.headers : {});
+    headers.set('Accept', accept || 'application/json');
+    return headers;
+  }
+  function zlapBookingError(reason, date, reservationId) {
+    send({kind:'booking_failed', reason:String(reason || 'Brak potwierdzenia').slice(0,180),
+      date:date, reservationId:reservationId || ''});
+  }
+  window.__zlapBook = function(practiceId, datetime) {
+    if (!saved || zlapBookingBusy || zlapBookingCompleted || running ||
+        requestInFlight || Date.now() < cooldownUntil) return false;
+    if (!zlapSafeId(practiceId) || typeof datetime !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(datetime)) return false;
+    var key = practiceId + '|' + datetime;
+    if (zlapBookingKeys[key]) return false;
+    var profile;
+    try {
+      var request = JSON.parse(saved.body);
+      profile = String(request.profileNumber || '').trim();
+    } catch (_) { return false; }
+    if (!/^[0-9]{8,30}$/.test(profile)) {
+      send({kind:'booking_failed', reason:'Brak poprawnego numeru PKK w sesji', date:datetime});
+      return false;
+    }
+    zlapBookingBusy = true;
+    zlapBookingKeys[key] = true;
+    var dateOnly = datetime.slice(0, 10);
+    var reservationId = '';
+    send({kind:'booking_started', date:datetime});
+    (async function () {
+      var base = location.origin + '/bknd/exam/api/v1/Reservations/';
+      try {
+        var createResponse = await fetchOriginal.call(window, base + 'create', {
+          method:'POST', credentials:saved.credentials || 'same-origin',
+          headers:zlapBookingHeaders('application/json'),
+          body:JSON.stringify({
+            profileNumber:profile,
+            organizationId:21,
+            examDate:dateOnly,
+            practiceExamId:practiceId,
+            profileType:'Pkk',
+            examType:'Practice',
+            language:'Polish',
+            category:'B'
+          }), cache:'no-store'
+        });
+        if (createResponse.status === 429) {
+          cooldownUntil = Date.now() + 30 * 60 * 1000;
+          send({kind:'rate', retryAfter:createResponse.headers.get('Retry-After') || ''});
+          zlapBookingError('HTTP 429 – limit portalu', datetime);
+          return;
+        }
+        if (createResponse.status === 401 || createResponse.status === 403) {
+          send({kind:'auth', status:createResponse.status});
+          zlapBookingError('Sesja wygasła – zaloguj się ponownie', datetime);
+          return;
+        }
+        if (!createResponse.ok) {
+          zlapBookingError('Tworzenie rezerwacji: HTTP ' + createResponse.status, datetime);
+          return;
+        }
+        var body = await createResponse.json();
+        reservationId = String(body && body.id || '');
+        if (!zlapSafeId(reservationId)) {
+          zlapBookingError('Portal nie zwrócił identyfikatora rezerwacji', datetime);
+          return;
+        }
+        send({kind:'booking_pending', date:datetime, reservationId:reservationId});
+        var controller = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 9000);
+        try {
+          var confirmResponse = await fetchOriginal.call(window,
+            base + 'confirm/' + encodeURIComponent(reservationId), {
+              method:'GET', credentials:saved.credentials || 'same-origin',
+              headers:zlapBookingHeaders('text/event-stream'),
+              cache:'no-store', signal:controller.signal
+            });
+          if (confirmResponse.body && confirmResponse.body.cancel) {
+            try { await confirmResponse.body.cancel(); } catch (_) {}
+          }
+        } catch (_) {
+          // A streaming timeout is not proof of failure. Query state below.
+        } finally {
+          clearTimeout(timeout);
+        }
+        for (var attempt = 0; attempt < 4; attempt++) {
+          if (attempt > 0) await new Promise(function(resolve) { setTimeout(resolve, 3000); });
+          var stateResponse = await fetchOriginal.call(window,
+            base + encodeURIComponent(reservationId), {
+              method:'GET', credentials:saved.credentials || 'same-origin',
+              headers:zlapBookingHeaders('application/json'),
+              cache:'no-store'
+            });
+          if (stateResponse.status === 429) {
+            send({kind:'rate', retryAfter:stateResponse.headers.get('Retry-After') || ''});
+            zlapBookingError('HTTP 429 przy sprawdzaniu stanu – sprawdź rezerwację ręcznie',
+              datetime, reservationId);
+            return;
+          }
+          if (!stateResponse.ok) continue;
+          var statusData = await stateResponse.json();
+          var status = String(statusData && statusData.status || '');
+          if (status === 'PlaceReserved' || status === 'Accepted') {
+            zlapBookingCompleted = true;
+            send({kind:'booking_success', date:datetime,
+              reservationId:reservationId, status:status});
+            return;
+          }
+          if (/^(Failed|Rejected|Cancelled|Canceled|Expired)$/i.test(status)) {
+            zlapBookingError('Portal odrzucił rezerwację: ' + status,
+              datetime, reservationId);
+            return;
+          }
+        }
+        zlapBookingError('Niepotwierdzony stan rezerwacji – sprawdź ją w portalu',
+          datetime, reservationId);
+      } catch (e) {
+        zlapBookingError('Błąd połączenia – sprawdź rezerwację ręcznie',
+          datetime, reservationId);
+      } finally {
+        zlapBookingBusy = false;
+      }
+    })();
     return true;
   };
 })();
