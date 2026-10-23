@@ -63,6 +63,13 @@ class SlotMonitor(
         private set
     private var hookDetected = false
 
+    val dateFrom: String get() = prefs.getString("date_from", "") ?: ""
+    val dateTo: String get() = prefs.getString("date_to", "") ?: ""
+    fun setDateRange(from: String, to: String) {
+        if (from.isNotBlank() && to.isNotBlank() && from > to) return
+        prefs.edit().putString("date_from", from).putString("date_to", to).remove("last_ids").apply()
+        onUpdate()
+    }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val notifyFirst: Boolean get() = prefs.getBoolean("notify_first", false)
     val blockedUntil: Long get() = prefs.getLong("blocked_until", 0L)
@@ -175,11 +182,6 @@ class SlotMonitor(
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
                 "response" -> diagnostics = "Odpowiedź API: HTTP " + message.optInt("status")
-                "hook" -> { lastError = "Skrypt monitorowania uruchomiony. Czekam na żądanie OneCenterExam." }
-                "endpoint" -> { lastError = "Wykryto żądanie OneCenterExam." }
-                "filter" -> { lastError = "Nie rozpoznano filtrów żądania API." }
-                "body" -> { lastError = "Nie odczytano treści żądania API." }
-                "response" -> { lastError = "API odpowiedziało HTTP " + message.optInt("status") }
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
@@ -225,6 +227,8 @@ class SlotMonitor(
             val id = e.optString("id").take(90)
             val date = e.optString("date").take(32)
             val places = e.optInt("places")
+            val day = date.take(10)
+            if ((dateFrom.isNotBlank() && day < dateFrom) || (dateTo.isNotBlank() && day > dateTo)) continue
             if (id.isBlank() || places <= 0 ||
                 !Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}""").containsMatchIn(date)) continue
             current[id + "|" + date] = date
