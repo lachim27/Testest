@@ -274,11 +274,23 @@ class DashboardActivity : Activity() {
 
         val status = card()
         put(status, text("AUTOMATYCZNE SPRAWDZANIE", 12f, muted, true), 12)
-        val connected = monitor.enabled && monitor.requestReady && monitor.lastCheckedAt > 0L
-        val stateLabel = when { !monitor.enabled -> "●  Wyłączone"; connected -> "●  Połączono"; else -> "●  Oczekiwanie na portal" }
+        val now = System.currentTimeMillis()
+        val connected = monitor.enabled && monitor.requestReady && monitor.lastCheckedAt > 0L &&
+            monitor.blockedUntil <= now
+        val stateLabel = when {
+            !monitor.enabled -> "●  Monitor wyłączony"
+            monitor.blockedUntil > now -> "●  Limit HTTP 429"
+            monitor.requestReady && monitor.lastCheckedAt == 0L -> "●  Czekam na pierwszy odczyt"
+            connected -> "●  Odczyt terminów działa"
+            else -> "●  Otwórz portal i wybierz egzamin"
+        }
         put(status, text(stateLabel,
-            23f, if (connected) green else Color.rgb(255, 188, 105), true), 10)
-        put(status, text(monitor.status(), 14f, muted), 12)
+            20f, if (connected) green else Color.rgb(164, 110, 34), true), 10)
+        put(status, text(monitor.status(), 14f, muted), 10)
+        if (monitor.requestReady && monitor.lastCheckedAt == 0L) {
+            put(status, text("Portal wykryty, ale dane nie zostały jeszcze poprawnie pobrane. " +
+                "Sprawdź komunikaty w Opcjach → Diagnostyka.", 13f, muted), 10)
+        }
         put(status, text("Zapytania w ciągu godziny: " + monitor.searchesThisHour + "/4", 14f, ink, true), 5)
         put(status, text("Najwcześniejsza kolejna próba: " +
             SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.nextCheckAt)),
