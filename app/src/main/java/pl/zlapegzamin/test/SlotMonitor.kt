@@ -86,6 +86,13 @@ class SlotMonitor(
     val nextCheckAt: Long get() = nextAllowed()
     val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
         .split("|").filter { it.isNotBlank() }.take(20)
+    val eventHistory: List<String> get() = (prefs.getString("events", "") ?: "")
+        .split("\n").filter { it.isNotBlank() }.take(12)
+    private fun event(message: String) {
+        val whenText = SimpleDateFormat("dd.MM HH:mm", Locale("pl", "PL")).format(Date())
+        val entries = listOf(whenText + "  •  " + message) + eventHistory.take(11)
+        prefs.edit().putString("events", entries.joinToString("\n")).apply()
+    }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -166,6 +173,7 @@ class SlotMonitor(
         lastError = "Sesja wygasła ($reason). Zaloguj się ponownie."
         diagnostics = lastError
         if (!sessionAlertSent) {
+            event("Sesja wygasła – ponów logowanie")
             sessionAlertSent = true
             prefs.edit().putBoolean("session_alert_sent", true).apply()
             sendTelegram(lastError)
@@ -192,8 +200,8 @@ class SlotMonitor(
 
     fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("enabled", value).apply()
-        if (value) lastAttemptAt = System.currentTimeMillis()
-        else requestPending = false
+        if (!value) requestPending = false
+        event(if (value) "Włączono monitorowanie" else "Wstrzymano monitorowanie")
         onUpdate()
     }
 
@@ -258,6 +266,7 @@ class SlotMonitor(
                     lastError = "HTTP 429 — portal ograniczył zapytania. Następna próba najwcześniej " + clock(until) + "."
                     diagnostics = "Wstrzymano sprawdzanie zgodnie z limitem portalu."
                     if (until > previousBlock) {
+                        event("HTTP 429 – przerwa do " + clock(until))
                         notify(lastError, "ZłapEgzamin – limit zapytań")
                         sendTelegram("ZłapEgzamin: " + lastError)
                     }
@@ -317,6 +326,7 @@ class SlotMonitor(
             .putLong("last_checked_at", lastCheckedAt)
             .apply()
 
+        event("Odczyt: " + slotCount + " terminów" + if (newItems.isNotEmpty()) " (" + lastNewCount + " nowych)" else "")
         if (enabled && newItems.isNotEmpty()) {
             val date = current[newItems.first()]?.replace('T', ' ')?.take(16) ?: ""
             val body = if (newItems.size == 1) {
