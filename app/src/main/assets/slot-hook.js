@@ -42,19 +42,31 @@
       return orgOK && (Number(b.category) === 5 || String(b.category).toUpperCase() === 'B');
     } catch (_) { return false; }
   }
-  function remember(url, body) {
+  function remember(url, body, originalHeaders, originalCredentials) {
     if (!isTarget(url)) return false;
     send({kind:'endpoint'});
     if (typeof body !== 'string') { send({kind:'body', detail:'not-text'}); return false; }
-    if (!body.trim()) {
+    if (!selected(body)) {
       var fields = [];
-      try { fields = Object.keys(JSON.parse(body)).filter(function(k){ return /organization|category|exam|center|type/i.test(k); }).slice(0,12); } catch (_) {}
+      try {
+        fields = Object.keys(JSON.parse(body)).filter(function(k) {
+          return /organization|category|exam|center|type/i.test(k);
+        }).slice(0, 12);
+      } catch (_) {}
       send({kind:'filter', fields:fields});
       return false;
     }
     var resolved = new URL(String(url), location.href).href;
     var wasReady = !!saved;
-    saved = {url: resolved, body: body};
+    var headers;
+    try {
+      headers = new Headers(originalHeaders || {});
+      if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    } catch (_) { headers = {'Content-Type':'application/json'}; }
+    saved = {
+      url: resolved, body: body, headers: headers,
+      credentials: originalCredentials || 'same-origin'
+    };
     hadAuthenticatedRequest = true;
     if (!wasReady) send({kind: 'ready'});
     return true;
@@ -115,7 +127,9 @@
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       observe(url);
       var body = init && init.body;
-      var watchThis = typeof body === 'string' && remember(url, body);
+      var headers = (init && init.headers) || (input && input.headers) || {};
+      var credentials = (init && init.credentials) || (input && input.credentials) || 'same-origin';
+      var watchThis = typeof body === 'string' && remember(url, body, headers, credentials);
       var requestBody = null;
       if (!watchThis && isTarget(url) && input && typeof input.clone === 'function') {
         try { requestBody = input.clone().text(); } catch (_) {}
@@ -135,7 +149,7 @@
         if (watchThis) inspect();
         else if (requestBody) {
           requestBody.then(function (txt) {
-            if (remember(url, txt)) inspect();
+            if (remember(url, txt, headers, credentials)) inspect();
           }).catch(function () {});
         }
         return res;
@@ -144,15 +158,22 @@
   }
   var openOriginal = XMLHttpRequest.prototype.open;
   var sendOriginal = XMLHttpRequest.prototype.send;
+  var setHeaderOriginal = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+    if (!this.__zlapHeaders) this.__zlapHeaders = {};
+    this.__zlapHeaders[String(name)] = String(value);
+    return setHeaderOriginal.apply(this, arguments);
+  };
   XMLHttpRequest.prototype.open = function (method, url) {
     this.__zlapURL = String(url || '');
     observe(url);
     this.__zlapMethod = String(method || '');
+    this.__zlapHeaders = {};
     return openOriginal.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function (body) {
     if (isTarget(this.__zlapURL) && this.__zlapMethod.toUpperCase() === 'POST' &&
-        remember(this.__zlapURL, body)) {
+        remember(this.__zlapURL, body, this.__zlapHeaders, 'same-origin')) {
       this.addEventListener('loadend', function () {
         try {
           var result = this.responseType === 'json' ? this.response : this.responseText;
@@ -230,8 +251,8 @@
     fetchOriginal.call(window, saved.url, {
       method: 'POST',
       body: saved.body,
-      headers: {'Content-Type': 'application/json'},
-      credentials: 'same-origin',
+      headers: saved.headers || {'Content-Type': 'application/json'},
+      credentials: saved.credentials || 'same-origin',
       cache: 'no-store'
     }).then(function (res) {
       return res.text().then(function (txt) {
