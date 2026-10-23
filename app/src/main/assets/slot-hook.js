@@ -67,6 +67,10 @@
       return;
     }
     if (status === 200) cooldownUntil = 0;
+    if (status === 200 && typeof raw === 'string' && /<html[\s>]/i.test(raw) && /logowanie|zaloguj|sign.in|login/i.test(raw)) {
+      send({kind:'auth', status:401});
+      return;
+    }
     if (status === 401 || status === 403) {
       send({kind:'auth', status:status});
       return;
