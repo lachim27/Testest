@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.7-temporary-autobook"
+        versionCode = 6
+        versionName = "0.8-independent-schedule"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
