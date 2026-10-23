@@ -37,9 +37,14 @@ class SlotMonitor(
     private val handler = Handler(Looper.getMainLooper())
     val intervalSeconds: Int get() = prefs.getInt("interval_seconds", 30)
     private val intervalMs: Long get() = intervalSeconds * 1000L
+    private var adaptiveMs = prefs.getLong("adaptive_interval_ms", 0L).coerceAtLeast(0L)
+    private val effectiveMs: Long get() = maxOf(intervalMs, adaptiveMs)
+    private var lastNetworkActivity = 0L
+    private var requestPending = false
+    private var nextJitterMs = 0L
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
-    private fun nextAllowed(): Long = maxOf(blockedUntil, lastAttemptAt + intervalMs)
+    private fun nextAllowed(): Long = maxOf(blockedUntil, lastAttemptAt + effectiveMs + nextJitterMs, lastNetworkActivity + 15000L)
     var supported = false
         private set
     var requestReady = false
@@ -79,9 +84,13 @@ class SlotMonitor(
             if (!resumed || destroyed) return
             val now = System.currentTimeMillis()
             if (enabled && supported && requestReady && now >= blockedUntil &&
-                now >= nextAllowed() && now - lastAttemptAt >= intervalMs && isPortal(web.url)) {
+                now >= nextAllowed() && !requestPending && isPortal(web.url)) {
+                requestPending = true
+                nextJitterMs = (0L..minOf(15000L, effectiveMs / 10L)).random()
                 lastAttemptAt = now
-                web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();", null)
+                web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();") { result ->
+                    if (result != "true") requestPending = false
+                }
             }
             handler.postDelayed(this, 15_000L)
         }
@@ -143,12 +152,14 @@ class SlotMonitor(
     fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("enabled", value).apply()
         if (value) lastAttemptAt = System.currentTimeMillis()
+        else requestPending = false
         onUpdate()
     }
 
     fun setInterval(seconds: Int) {
         if (seconds !in 10..3600) return
         prefs.edit().putInt("interval_seconds", seconds).apply()
+        if (adaptiveMs < intervalMs) adaptiveMs = intervalMs
         onUpdate()
     }
 
@@ -167,7 +178,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Monitoring włączony. Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Interwał: " + intervalSeconds + " s. Kolejny odczyt po: " + clock(nextAllowed()) + "."
+                ". Interwał efektywny: " + (effectiveMs / 1000L) + " s. Kolejny odczyt po: " + clock(nextAllowed()) + "."
         }
     }
 
@@ -177,11 +188,11 @@ class SlotMonitor(
             val message = JSONObject(raw)
             when (message.optString("kind")) {
                 "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
-                "endpoint" -> diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..."
+                "endpoint" -> { lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..." }
                 "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
-                "response" -> diagnostics = "Odpowiedź API: HTTP " + message.optInt("status")
+                "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
@@ -191,24 +202,34 @@ class SlotMonitor(
                 }
                 "terms" -> consume(message)
                 "rate" -> {
+                    requestPending = false
                     val retry = message.optString("retryAfter").trim()
-                    val seconds = retry.toLongOrNull()
-                    val waitMs = if (seconds != null && seconds in 1..86400) {
-                        seconds * 1000L + 60_000L
-                    } else 30 * 60 * 1000L
+                    val now = System.currentTimeMillis()
+                    val retryMs = retry.toLongOrNull()?.takeIf { it >= 0 }?.let {
+                        (it.coerceAtMost(86400L) * 1000L)
+                    } ?: try {
+                        val parsed = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
+                            isLenient = false
+                        }.parse(retry)
+                        parsed?.time?.minus(now)?.coerceAtLeast(0L)
+                    } catch (_: Exception) { null }
                     strikes = minOf(10, strikes + 1)
-                    prefs.edit().putInt("strikes", strikes).apply()
-                    val fallback = minOf(4 * hourMs, 30 * 60_000L * (1L shl minOf(3, strikes - 1)))
-                    val until = maxOf(blockedUntil, System.currentTimeMillis() + if (seconds == null) fallback else waitMs)
-                    prefs.edit().putLong("blocked_until", until).apply()
+                    adaptiveMs = minOf(4 * hourMs, maxOf(120000L, maxOf(intervalMs * 2L, adaptiveMs * 2L)))
+                    val fallback = minOf(4 * hourMs, 5 * 60_000L * (1L shl minOf(5, strikes - 1)))
+                    val waitMs = maxOf(fallback, retryMs ?: 0L)
+                    val until = maxOf(blockedUntil, now + waitMs)
+                    prefs.edit().putInt("strikes", strikes)
+                        .putLong("adaptive_interval_ms", adaptiveMs)
+                        .putLong("blocked_until", until).apply()
                     lastError = "Portal ograniczył liczbę żądań (HTTP 429)."
                 }
                 "auth" -> {
+                    requestPending = false
                     requestReady = false
                     lastError = "Sesja wygasła (HTTP " + message.optInt("status") + "). Zaloguj się ponownie."
                 }
-                "http" -> lastError = "Odczyt nieudany: HTTP " + message.optInt("status")
-                "network" -> lastError = "Błąd sieci podczas sprawdzania terminów."
+                "http" -> { requestPending = false; adaptiveMs = minOf(4 * hourMs, maxOf(120000L, effectiveMs * 2)); prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply(); lastError = "Odczyt nieudany: HTTP " + message.optInt("status") }
+                "network" -> { requestPending = false; lastError = "Błąd sieci podczas sprawdzania terminów." }
                 "format" -> lastError = "Nieznany format odpowiedzi. Pola: " +
                     message.optJSONArray("fields")?.toString().orEmpty().take(120)
             }
@@ -220,6 +241,11 @@ class SlotMonitor(
     }
 
     private fun consume(message: JSONObject) {
+        requestPending = false
+        if (adaptiveMs > intervalMs) {
+            adaptiveMs = maxOf(intervalMs, (adaptiveMs * 0.85).toLong())
+            prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply()
+        }
         val array = message.optJSONArray("terms") ?: return
         val current = linkedMapOf<String, String>()
         for (i in 0 until minOf(array.length(), 300)) {
