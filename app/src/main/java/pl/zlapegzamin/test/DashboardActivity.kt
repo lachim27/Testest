@@ -2,6 +2,13 @@ package pl.zlapegzamin.test
 
 import android.Manifest
 import android.app.Activity
+import android.app.DatePickerDialog
+import android.view.WindowManager
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import android.view.WindowInsets
+import android.view.ViewGroup
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -111,6 +118,7 @@ class DashboardActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
+        window.decorView.systemUiVisibility = 0
         val root = column().apply { setBackgroundColor(bg) }
         val header = row().apply { setPadding(dp(22), dp(18), dp(22), dp(18)) }
         val brand = column()
@@ -156,6 +164,16 @@ class DashboardActivity : Activity() {
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
+        if (Build.VERSION.SDK_INT >= 30) {
+            root.setOnApplyWindowInsetsListener { view, insets ->
+                val bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+                navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + bottom)
+                insets
+            }
+        } else {
+            val resource = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+            if (resource > 0) navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + resources.getDimensionPixelSize(resource))
+        }
         setContentView(root)
 
         monitor = SlotMonitor(this, browser) {
@@ -262,6 +280,25 @@ class DashboardActivity : Activity() {
         put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
         put(page, alerts, 19)
 
+        val dates = card()
+        put(dates, text("ZAKRES DAT EGZAMINU", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(dates, text("Powiadomienia tylko o terminach w wybranym zakresie. Nie zmienia to dat wyszukiwanych przez portal.", 13f, muted), 12)
+        fun pickDate(isFrom: Boolean) {
+            val cal = Calendar.getInstance()
+            val stored = if (isFrom) monitor.dateFrom else monitor.dateTo
+            try { if (stored.isNotBlank()) cal.time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(stored) ?: cal.time } catch (_: Exception) {}
+            DatePickerDialog(this, { _, year, month, day ->
+                val chosen = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+                val from = if (isFrom) chosen else monitor.dateFrom
+                val to = if (isFrom) monitor.dateTo else chosen
+                if (from.isNotBlank() && to.isNotBlank() && from > to) Toast.makeText(this, "Data od nie może być późniejsza niż data do", Toast.LENGTH_LONG).show()
+                else monitor.setDateRange(from, to)
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        }
+        put(dates, action("Od: " + monitor.dateFrom.ifBlank { "wybierz datę" }, false) { pickDate(true) }, 10)
+        put(dates, action("Do: " + monitor.dateTo.ifBlank { "wybierz datę" }, false) { pickDate(false) }, 10)
+        put(dates, action("Wyczyść zakres") { monitor.setDateRange("", "") })
+        put(page, dates, 19)
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(frequency, text("Aktualnie: " + monitor.intervalSeconds + " sekund. Wybierz interwał:", 14f, muted), 12)
