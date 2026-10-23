@@ -368,15 +368,21 @@ class DashboardActivity : Activity() {
                 "Sprawdź komunikaty w Opcjach → Diagnostyka.", 13f, muted), 10)
         }
         put(status, text("Zapytania w ciągu godziny: " + monitor.searchesThisHour + "/4", 14f, ink, true), 5)
-        put(status, text("Najwcześniejsza kolejna próba: " +
-            SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.nextCheckAt)),
-            13f, muted), 15)
+        val timeFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL"))
+        put(status, text("Planowane automatyczne sprawdzenie: " +
+            timeFormat.format(java.util.Date(monitor.nextPlannedAutoAt)), 13f, ink, true), 7)
+        if (monitor.nextCheckAt > monitor.nextPlannedAutoAt + 30_000L) {
+            put(status, text("Opóźnienie ze względu na limit portalu – możliwa próba: " +
+                timeFormat.format(java.util.Date(monitor.nextCheckAt)), 13f, muted), 12)
+        } else {
+            put(status, text("Godzina ręcznego odczytu nie resetuje automatu.", 12f, muted), 12)
+        }
         put(status, action(if (monitor.enabled) "Wstrzymaj monitorowanie" else "Włącz monitorowanie") {
             monitor.setEnabled(!monitor.enabled)
             if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
         }, 11)
         put(status, action("↻  Sprawdź teraz (bez czekania 15 minut)", false) { manualCheck() }, 7)
-        put(status, text("Ręczna kontrola pomija harmonogram aplikacji, ale nie blokadę HTTP 429 portalu.", 12f, muted), 11)
+        put(status, text("Ręczny odczyt nie przesuwa planu automatu. Wspólny limit godzinowy i HTTP 429 mogą opóźnić rzeczywistą próbę.", 12f, muted), 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
         put(page, status, 12)
         val reservation = card()
