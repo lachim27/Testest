@@ -136,9 +136,10 @@ class DashboardActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.statusBarColor = Color.rgb(42, 110, 234)
+        window.navigationBarColor = Color.WHITE
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         val root = column().apply { setBackgroundColor(bg) }
         val header = row().apply {
             setPadding(dp(22), dp(17), dp(22), dp(17))
@@ -194,14 +195,23 @@ class DashboardActivity : Activity() {
         // Reserve real space for the system status and navigation bars.
         // Never manually add their insets to app controls as well.
         if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(true)
+            window.setDecorFitsSystemWindows(false)
+            root.setOnApplyWindowInsetsListener { view, insets ->
+                val safe = insets.getInsets(
+                    WindowInsets.Type.statusBars() or
+                    WindowInsets.Type.navigationBars() or WindowInsets.Type.displayCutout()
+                )
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+                insets
+            }
         } else {
             root.fitsSystemWindows = true
         }
         setContentView(root)
+        if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
 
         monitor = SlotMonitor(this, browser) {
-            if (::pages.isInitialized && ::monitor.isInitialized && tab != "portal") show(tab)
+            if (::pages.isInitialized && ::monitor.isInitialized && (tab == "start" || tab == "slots")) show(tab)
         }
         monitor.install()
         browser.loadUrl(portal)
@@ -227,13 +237,14 @@ class DashboardActivity : Activity() {
         pages.visibility = if (which == "portal") View.GONE else View.VISIBLE
         when (which) {
             "settings" -> settingsPage()
+            "slots" -> slotsPage()
             "start" -> homePage()
         }
         navigation.removeAllViews()
-        for ((id, title) in listOf("start" to "⌂  Start", "portal" to "◎  Portal",
-            "settings" to "⚙  Opcje")) {
+        for ((id, title) in listOf("start" to "⌂ Panel", "slots" to "◷ Terminy",
+            "portal" to "◎ Portal", "settings" to "⚙ Opcje")) {
             val selected = id == which
-            val label = text(title, 13f, if (selected) blue else muted, selected).apply {
+            val label = text(title, 12f, if (selected) blue else muted, selected).apply {
                 gravity = Gravity.CENTER
                 background = round(if (selected) Color.rgb(226, 237, 255) else Color.WHITE, 12)
                 setPadding(dp(4), dp(13), dp(4), dp(13))
@@ -246,7 +257,19 @@ class DashboardActivity : Activity() {
     }
     private fun homePage() {
         val page = scroll()
-        put(page, text("Znajdź wcześniejszy egzamin", 23f, ink, true), 7)
+        val hero = card().apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(27, 92, 226), Color.rgb(79, 150, 249))
+            ).apply { cornerRadius = dp(20).toFloat() }
+        }
+        put(hero, text("Twój asystent egzaminu", 22f, Color.WHITE, true), 8)
+        put(hero, text("MORD Kraków   •   Kategoria B   •   Praktyczny",
+            13f, Color.rgb(235, 246, 255)), 12)
+        put(hero, text("Automatyczne powiadomienia o wolnych miejscach",
+            14f, Color.WHITE, true))
+        put(page, hero, 19)
+        put(page, text("Znajdź wcześniejszy egzamin", 21f, ink, true), 7)
         put(page, text("MORD Kraków • Kategoria B • Praktyczny", 14f, muted), 22)
 
         val status = card()
@@ -275,7 +298,7 @@ class DashboardActivity : Activity() {
             23f, ink, true), 12)
         put(results, text("Wolnych terminów w odczycie: " + monitor.slotCount, 14f, muted), 10)
         put(results, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 14f, muted), 14)
-        put(results, action("Zobacz terminy w portalu", false) { show("portal") })
+        put(results, action("Zobacz listę znalezionych terminów", false) { show("slots") })
         put(page, results, 18)
         calendarSection(page)
         val datesList = monitor.recentSlots
@@ -289,6 +312,15 @@ class DashboardActivity : Activity() {
             put(page, upcoming, 20)
         }
 
+        put(page, text("Historia monitorowania", 19f, ink, true), 12)
+        val log = card()
+        if (monitor.eventHistory.isEmpty()) {
+            put(log, text("Historia pojawi się po pierwszym odczycie.", 13f, muted))
+        } else {
+            for (entry in monitor.eventHistory.take(5))
+                put(log, text("•  " + entry, 13f, ink), 9)
+        }
+        put(page, log, 20)
         put(page, text("Szybkie działania", 19f, ink, true), 12)
         val tools = card()
         put(tools, action("↗  Zaloguj się przez przeglądarkę") { outside(Uri.parse(portal)) }, 11)
@@ -366,6 +398,28 @@ class DashboardActivity : Activity() {
             12f, muted), 0)
         put(page, text("Kalendarz terminów", 19f, ink, true), 12)
         put(page, panel, 20)
+    }
+
+    private fun slotsPage() {
+        val page = scroll()
+        put(page, text("Znalezione terminy", 23f, ink, true), 7)
+        put(page, text("Wolne miejsca z ostatniego prawidłowego odczytu portalu.", 13f, muted), 20)
+        val result = card()
+        val slots = monitor.recentSlots
+        if (slots.isEmpty()) {
+            put(result, text("Brak zapisanych terminów", 18f, ink, true), 10)
+            put(result, text("Zaloguj się w portalu i wyświetl listę dostępnych egzaminów.",
+                13f, muted), 16)
+        } else {
+            put(result, text("Dostępnych w ostatnim odczycie: " + monitor.slotCount,
+                14f, blue, true), 12)
+            for (date in slots) {
+                put(result, text("◷  " + date.replace('T', ' ').take(16), 16f, ink, true), 12)
+            }
+        }
+        put(result, action("Przejdź do oficjalnego portalu") { show("portal") })
+        put(page, result, 16)
+        put(page, text("Terminy mogą zniknąć przed ponownym sprawdzeniem. To nie jest potwierdzenie rezerwacji.", 12f, muted))
     }
 
     private fun settingsPage() {
