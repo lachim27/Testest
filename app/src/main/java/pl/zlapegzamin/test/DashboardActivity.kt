@@ -382,27 +382,79 @@ class DashboardActivity : Activity() {
         put(page, text("ZłapEgzamin Android • Monitor sprawdza terminy w granicach limitów portalu.\n"+
             "Monitor w tle działa dopóki Android utrzymuje proces aplikacji; po zamknięciu lub ubiciu procesu zatrzyma się. Bez automatycznej rezerwacji.", 12f, muted))
     }
+    private fun setCalendarBoundary(day: String, fromSide: Boolean) {
+        val from = if (fromSide) day else monitor.dateFrom
+        val to = if (fromSide) monitor.dateTo else day
+        if (from.isNotBlank() && to.isNotBlank() && from > to) {
+            Toast.makeText(this, "Data od nie może być późniejsza niż data do.", Toast.LENGTH_LONG).show()
+            return
+        }
+        monitor.setDateRange(from, to)
+        Toast.makeText(this, "Zapisano zakres dat powiadomień.", Toast.LENGTH_SHORT).show()
+        // SlotMonitor triggers a refresh when the start tab is open.
+    }
+
+    private fun calendarDay(day: String) {
+        val hours = monitor.recentSlots.filter { it.take(10) == day }
+            .map { it.replace('T', ' ').take(16) }
+        val detail = if (hours.isEmpty()) {
+            "Brak zapisanych wolnych terminów na ten dzień.\n\n" +
+                "Możesz wybrać go jako początek lub koniec zakresu powiadomień."
+        } else {
+            "Terminy z ostatniego odczytu:\n" + hours.joinToString("\n") +
+                "\n\nDostępność może się już zmienić."
+        }
+        val style = if (darkMode) android.R.style.Theme_Material_Dialog_Alert
+            else android.R.style.Theme_Material_Light_Dialog_Alert
+        android.app.AlertDialog.Builder(this, style)
+            .setTitle("Data: $day")
+            .setMessage(detail)
+            .setItems(arrayOf(
+                "Ustaw jako datę OD",
+                "Ustaw jako datę DO",
+                "Otwórz portal info-kierowca.pl"
+            )) { _, which ->
+                when (which) {
+                    0 -> setCalendarBoundary(day, true)
+                    1 -> setCalendarBoundary(day, false)
+                    2 -> show("portal")
+                }
+            }
+            .setNegativeButton("Zamknij", null)
+            .show()
+    }
+
     private fun calendarSection(page: LinearLayout) {
         val month = java.time.YearMonth.now().plusMonths(calendarMonthOffset.toLong())
         val available = monitor.recentSlots.map { it.take(10) }.toSet()
+        val from = monitor.dateFrom
+        val to = monitor.dateTo
         val panel = card()
         val heading = row()
         val previous = text("❮", 19f, blue, true).apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener {
-                if (calendarMonthOffset > 0) { calendarMonthOffset--; show("start") }
+                if (calendarMonthOffset > 0) {
+                    calendarMonthOffset--
+                    show("start")
+                }
             }
         }
         heading.addView(previous)
         val monthName = month.atDay(1)
             .format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", Locale("pl", "PL")))
-            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pl", "PL")) else it.toString() }
+            .replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale("pl", "PL")) else it.toString()
+            }
         heading.addView(text(monthName, 17f, ink, true).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(0, -2, 1f))
         heading.addView(text("❯", 19f, blue, true).apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener {
-                if (calendarMonthOffset < 5) { calendarMonthOffset++; show("start") }
+                if (calendarMonthOffset < 5) {
+                    calendarMonthOffset++
+                    show("start")
+                }
             }
         })
         put(panel, heading, 14)
@@ -421,33 +473,40 @@ class DashboardActivity : Activity() {
                 val number = week * 7 + weekday - offset + 1
                 val valid = number in 1..month.lengthOfMonth()
                 val date = if (valid) month.atDay(number).toString() else ""
-                val highlighted = date in available
-                val cell = text(if (valid) number.toString() else "", 14f,
-                    if (highlighted) Color.WHITE else if (valid) ink else muted,
-                    highlighted).apply {
+                val highlighted = valid && date in available
+                val rangeSelected = valid && (from.isNotBlank() || to.isNotBlank()) &&
+                    (from.isBlank() || date >= from) && (to.isBlank() || date <= to)
+                val cell = text(
+                    if (valid) number.toString() else "",
+                    14f,
+                    if (highlighted) Color.WHITE else if (rangeSelected) blue else ink,
+                    highlighted || rangeSelected
+                ).apply {
                     gravity = Gravity.CENTER
+                    minHeight = dp(44)
                     setPadding(dp(1), dp(11), dp(1), dp(11))
-                    background = round(if (highlighted) blue else Color.WHITE, 12)
-                    if (highlighted) {
-                        setOnClickListener {
-                            val times = monitor.recentSlots.filter { it.startsWith(date) }
-                                .joinToString("\n") { it.replace('T', ' ').take(16) }
-                            android.app.AlertDialog.Builder(this@DashboardActivity)
-                                .setTitle("Terminy: $date")
-                                .setMessage("Ostatnio odczytane godziny:\n" + times +
-                                    "\n\nSprawdź aktualność w portalu.")
-                                .setPositiveButton("Otwórz portal") { _, _ -> show("portal") }
-                                .setNegativeButton("Zamknij", null)
-                                .show()
-                        }
+                    background = round(
+                        if (highlighted) Color.rgb(42, 110, 234)
+                        else if (rangeSelected) paleBlue else cardBg, 12
+                    )
+                    if (valid) {
+                        contentDescription = "Dzień $date" +
+                            if (highlighted) ", są zapisane terminy" else ", brak zapisanych terminów"
+                        isClickable = true
+                        setOnClickListener { calendarDay(date) }
                     }
                 }
                 line.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
             }
             put(panel, line, 3)
         }
-        put(panel, text("Niebieskie dni oznaczają terminy z ostatniego odczytu, nie rezerwacje.",
-            12f, muted), 0)
+        put(panel, text("Dotknij dowolnego dnia: zobacz terminy lub ustaw zakres dat. " +
+            "Niebieskie dni oznaczają ostatnio odczytane terminy, nie rezerwacje.",
+            12f, muted))
+        if (from.isNotBlank() || to.isNotBlank()) {
+            put(panel, text("Zakres: " + from.ifBlank { "bez początku" } + " → " +
+                to.ifBlank { "bez końca" }, 12f, blue, true), 8)
+        }
         put(page, text("Kalendarz terminów", 19f, ink, true), 12)
         put(page, panel, 20)
     }
@@ -502,12 +561,17 @@ class DashboardActivity : Activity() {
             val cal = Calendar.getInstance()
             val stored = if (isFrom) monitor.dateFrom else monitor.dateTo
             try { if (stored.isNotBlank()) cal.time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(stored) ?: cal.time } catch (_: Exception) {}
-            DatePickerDialog(this, { _, year, month, day ->
+            val pickerStyle = if (darkMode) android.R.style.Theme_Material_Dialog_Alert
+                else android.R.style.Theme_Material_Light_Dialog_Alert
+            DatePickerDialog(this, pickerStyle, { _, year, month, day ->
                 val chosen = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
                 val from = if (isFrom) chosen else monitor.dateFrom
                 val to = if (isFrom) monitor.dateTo else chosen
                 if (from.isNotBlank() && to.isNotBlank() && from > to) Toast.makeText(this, "Data od nie może być późniejsza niż data do", Toast.LENGTH_LONG).show()
-                else monitor.setDateRange(from, to)
+                else {
+                    monitor.setDateRange(from, to)
+                    show("settings")
+                }
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
         put(dates, action("Od: " + monitor.dateFrom.ifBlank { "wybierz datę" }, false) { pickDate(true) }, 10)
@@ -526,6 +590,7 @@ class DashboardActivity : Activity() {
                     to.add(Calendar.DAY_OF_MONTH, days)
                     val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                     monitor.setDateRange(format.format(from.time), format.format(to.time))
+                    show("settings")
                 }
             }
             preset.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
@@ -533,7 +598,10 @@ class DashboardActivity : Activity() {
             })
         }
         put(dates, preset, 10)
-        put(dates, action("Wyczyść zakres", false) { monitor.setDateRange("", "") })
+        put(dates, action("Wyczyść zakres", false) {
+            monitor.setDateRange("", "")
+            show("settings")
+        })
         put(page, dates, 19)
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
