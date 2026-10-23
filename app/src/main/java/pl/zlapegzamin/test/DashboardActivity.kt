@@ -288,6 +288,15 @@ class DashboardActivity : Activity() {
             })
         }
     }
+    /** Redraw settings without jumping back to the top after a quick preset. */
+    private fun refreshSettingsAtSamePosition() {
+        val old = (pages.getChildAt(0) as? ScrollView)?.scrollY ?: 0
+        show("settings")
+        (pages.getChildAt(0) as? ScrollView)?.post {
+            (pages.getChildAt(0) as? ScrollView)?.scrollTo(0, old)
+        }
+    }
+
     private fun manualCheck() {
         monitor.checkNow { result ->
             Toast.makeText(this, result, Toast.LENGTH_LONG).show()
@@ -381,8 +390,11 @@ class DashboardActivity : Activity() {
             monitor.setEnabled(!monitor.enabled)
             if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
         }, 11)
-        put(status, action("↻  Sprawdź teraz (bez czekania 15 minut)", false) { manualCheck() }, 7)
-        put(status, text("Ręczny odczyt nie przesuwa planu automatu. Wspólny limit godzinowy i HTTP 429 mogą opóźnić rzeczywistą próbę.", 12f, muted), 11)
+        put(status, action("↻  Sprawdź teraz (ręcznie)", false) { manualCheck() }, 7)
+        put(status, text("Minimalny odstęp automatu: " +
+            monitor.minimumAutoGapSeconds + " s (fabrycznie 900 s). " +
+            "Zmiana w Opcje → Częstotliwość. Ręczny odczyt nie przesuwa planu.",
+            12f, muted), 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
         put(page, status, 12)
         val reservation = card()
@@ -688,7 +700,11 @@ class DashboardActivity : Activity() {
 
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
-        put(frequency, text("Wybrano: " + monitor.intervalSeconds + " s. Dla ochrony przed HTTP 429 monitor wykonuje nie więcej niż 4 próby/h i zachowuje co najmniej 15 minut przerwy.", 14f, muted), 12)
+        put(frequency, text("Interwał bazowy: " + monitor.intervalSeconds + " s. " +
+            "Minimalna przerwa: " + monitor.minimumAutoGapSeconds + " s. " +
+            "Rzeczywisty odstęp to dłuższa z tych wartości. " +
+            "Limit bezpieczeństwa nadal wynosi 4 odczyty na godzinę; " +
+            "HTTP 429 może dodatkowo wydłużyć oczekiwanie.", 14f, muted), 12)
         for (seconds in listOf(30, 60, 300, 900, 1800)) {
             put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) {
                 monitor.setInterval(seconds)
@@ -711,6 +727,45 @@ class DashboardActivity : Activity() {
             }
         })
         put(page, frequency, 19)
+
+        val minGap = card()
+        put(minGap, text("MINIMALNY ODSTĘP AUTOMATU", 12f, blue, true), 12)
+        put(minGap, text("Fabrycznie: 15 minut (900 sekund). " +
+            "Możesz ustawić krótszą lub dłuższą przerwę. " +
+            "Nie zmienia to ograniczeń serwera ani limitu 4 prób na godzinę.",
+            14f, muted), 12)
+        put(minGap, text("Obecnie: " + monitor.minimumAutoGapSeconds + " sekund", 17f, ink, true), 12)
+        for (seconds in listOf(30, 60, 120, 300, 600, 900, 1800, 3600)) {
+            val description = if (seconds >= 60 && seconds % 60 == 0)
+                (seconds / 60).toString() + " min" else seconds.toString() + " s"
+            val label = (if (monitor.minimumAutoGapSeconds == seconds) "✓  " else "") +
+                description + (if (seconds == 900) " (fabrycznie)" else "")
+            put(minGap, action(label, monitor.minimumAutoGapSeconds == seconds) {
+                monitor.setMinimumAutoGap(seconds)
+                refreshSettingsAtSamePosition()
+            }, 7)
+        }
+        val customMinGap = EditText(this).apply {
+            hint = "Własny minimalny odstęp (10–3600 s)"
+            setTextColor(ink)
+            setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            background = round(paleBlue, 12)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        put(minGap, customMinGap, 10)
+        put(minGap, action("Zapisz minimalny odstęp") {
+            val seconds = customMinGap.text.toString().toIntOrNull()
+            if (seconds == null || !monitor.setMinimumAutoGap(seconds)) {
+                Toast.makeText(this, "Podaj od 10 do 3600 sekund", Toast.LENGTH_LONG).show()
+            } else refreshSettingsAtSamePosition()
+        }, 8)
+        put(minGap, action("Przywróć fabryczne 15 minut", false) {
+            monitor.setMinimumAutoGap(900)
+            refreshSettingsAtSamePosition()
+        })
+        put(page, minGap, 19)
+
         val debug = card()
         put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(debug, text(monitor.diagnostics, 14f, muted), 12)
