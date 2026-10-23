@@ -64,7 +64,7 @@
     send({kind:'response', status:status});
     if (status === 429) {
       cooldownUntil = Date.now() + 30 * 60 * 1000;
-      send({kind:'rate', retryAfter: String(retryAfter || '').slice(0, 120)});
+      send({kind:'rate', retryAfter: String(retryAfter || raw || '').slice(0, 200)});
       return;
     }
     if (status === 200) cooldownUntil = 0;
@@ -120,9 +120,11 @@
       if (!watchThis && isTarget(url) && input && typeof input.clone === 'function') {
         try { requestBody = input.clone().text(); } catch (_) {}
       }
-      if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; }
+      if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; send({kind:'request'}); }
       return fetchOriginal.apply(this, arguments).then(function (res) {
         if (isTarget(url)) requestInFlight = false;
+        if (hadAuthenticatedRequest && /\/jwt\/refresh/i.test(String(url)) &&
+            (res.status === 401 || res.status === 403)) send({kind:'auth', status:res.status});
         function inspect() {
           try {
             res.clone().text().then(function (txt) {
@@ -160,6 +162,7 @@
     }
     if (isTarget(this.__zlapURL)) {
       lastRequest = Date.now(); requestInFlight = true;
+      send({kind:'request'});
       this.addEventListener('loadend', function () { requestInFlight = false; }, {once:true});
     }
     return sendOriginal.apply(this, arguments);
@@ -223,6 +226,7 @@
         Date.now() - lastRequest < 15000) return false;
     running = true;
     lastRequest = Date.now();
+    send({kind:'request'});
     fetchOriginal.call(window, saved.url, {
       method: 'POST',
       body: saved.body,
