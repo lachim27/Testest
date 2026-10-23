@@ -69,7 +69,7 @@ class RateGuard(context: Context) {
             format.parse(trimmed)?.time?.let { return it }
         } catch (_: Exception) { }
         try {
-            val match = Regex("""(\\d{2}\\.\\d{2}\\.\\d{4})\\s*[, ]\\s*(\\d{2}:\\d{2}:\\d{2})""")
+            val match = Regex("""(\d{2}\.\d{2}\.\d{4})\s*[, ]\s*(\d{2}:\d{2}:\d{2})""")
                 .find(trimmed)
             if (match != null) {
                 val date = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL"))
