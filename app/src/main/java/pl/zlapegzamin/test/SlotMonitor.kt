@@ -198,6 +198,55 @@ class SlotMonitor(
         destroyed = true
     }
 
+    /**
+     * One manual check through the authenticated portal WebView. It bypasses only
+     * the periodic scheduler, NEVER the persistent rate budget / Retry-After.
+     * The user must first open the exam results in the portal.
+     */
+    fun checkNow(onResult: (String) -> Unit) {
+        if (destroyed || !supported) {
+            onResult("Monitor nie jest gotowy. Sprawdź WebView i otwórz portal.")
+            return
+        }
+        if (!enabled) {
+            onResult("Najpierw włącz monitorowanie.")
+            return
+        }
+        if (!requestReady || !isPortal(web.url)) {
+            onResult("Najpierw zaloguj się w Portalu i wyświetl listę terminów.")
+            return
+        }
+        if (requestPending) {
+            onResult("Poprzedni odczyt nadal trwa.")
+            return
+        }
+        val now = System.currentTimeMillis()
+        val next = nextAllowed()
+        if (next > now) {
+            val formatted = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL"))
+                .format(Date(next))
+            onResult("Limit zapytań: następny odczyt najwcześniej $formatted.")
+            return
+        }
+        requestPending = true
+        lastAttemptAt = now
+        nextJitterMs = 0L
+        web.evaluateJavascript(
+            "Boolean(window.__zlapCheckNow && window.__zlapCheckNow());"
+        ) { value ->
+            if (value == "true") {
+                event("Ręczne sprawdzenie uruchomione")
+                onResult("Wysłano jedno zapytanie. Wynik pojawi się po odpowiedzi portalu.")
+            } else {
+                requestPending = false
+                // The saved authenticated request might have expired or the page
+                // may still be busy; never silently claim a successful check.
+                onResult("Portal nie rozpoczął odczytu. Otwórz listę terminów i spróbuj ponownie.")
+            }
+            onUpdate()
+        }
+    }
+
     fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("enabled", value).apply()
         if (!value) requestPending = false
