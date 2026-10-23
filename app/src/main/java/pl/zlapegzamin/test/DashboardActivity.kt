@@ -540,7 +540,7 @@ class DashboardActivity : Activity() {
         put(page, text("Powiadomienia i monitorowanie", 14f, muted), 18)
         val appearance = card()
         put(appearance, text("WYGLĄD APLIKACJI", 12f, blue, true), 12)
-        put(appearance, text("Aktualny motyw: " + if (darkMode) "ciemny" else "jasny",
+        put(appearance, text("Aktualny motyw: " + (if (darkMode) "ciemny" else "jasny"),
             15f, ink, true), 13)
         put(appearance, action(if (darkMode) "☀  Włącz jasny motyw" else "☾  Włącz ciemny motyw", false) {
             uiPrefs.edit().putBoolean("dark_mode", !darkMode).apply()
@@ -607,7 +607,10 @@ class DashboardActivity : Activity() {
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(frequency, text("Wybrano: " + monitor.intervalSeconds + " s. Dla ochrony przed HTTP 429 monitor wykonuje nie więcej niż 4 próby/h i zachowuje co najmniej 15 minut przerwy.", 14f, muted), 12)
         for (seconds in listOf(30, 60, 300, 900, 1800)) {
-            put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) { monitor.setInterval(seconds) }, 8)
+            put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) {
+                monitor.setInterval(seconds)
+                show("settings")
+            }, 8)
         }
         val custom = EditText(this).apply {
             hint = "Własny interwał (10–3600 sekund)"
@@ -619,7 +622,10 @@ class DashboardActivity : Activity() {
         put(frequency, action("Zapisz własny interwał") {
             val value = custom.text.toString().toIntOrNull()
             if (value == null || value !in 10..3600) Toast.makeText(this, "Wpisz liczbę od 10 do 3600", Toast.LENGTH_LONG).show()
-            else monitor.setInterval(value)
+            else {
+                monitor.setInterval(value)
+                show("settings")
+            }
         })
         put(page, frequency, 19)
         val debug = card()
@@ -652,6 +658,7 @@ class DashboardActivity : Activity() {
         put(alerts, action(if (monitor.notifyFirst) "Powiadom też przy pierwszym odczycie: TAK"
             else "Powiadom też przy pierwszym odczycie: NIE", false) {
             monitor.setNotifyFirst(!monitor.notifyFirst)
+            show("settings")
         }, 12)
         put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
         put(page, alerts, 19)
@@ -679,6 +686,7 @@ class DashboardActivity : Activity() {
             } else {
                 monitor.configureTelegram(token.text.toString(), chat.text.toString())
                 Toast.makeText(this, "Zapisano", Toast.LENGTH_SHORT).show()
+                show("settings")
             }
         }, 10)
         put(telegram, action("Wyślij test Telegram", false) { monitor.testTelegram() })
