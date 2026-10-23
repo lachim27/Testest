@@ -322,7 +322,7 @@ class DashboardActivity : Activity() {
                 if (monitor.setAutoReserve(true))
                     Toast.makeText(this, "Autorezerwacja włączona. Czekam na poprawny odczyt.", Toast.LENGTH_LONG).show()
                 else
-                    Toast.makeText(this, "Zakres dat jest nieprawidłowy (maks. 90 dni).", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Zakres dat jest nieprawidłowy (maks. 30 dni).", Toast.LENGTH_LONG).show()
                 show("settings")
             }
             .setNegativeButton("Anuluj", null)
