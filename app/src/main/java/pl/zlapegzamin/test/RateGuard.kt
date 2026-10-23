@@ -10,7 +10,8 @@ import java.util.TimeZone
 /**
  * Conservative, persistent local budget for the portal's search endpoint.
  * Not a bypass: server-side limits always take precedence.
- * Includes manual searches observed in the WebView.
+ * Includes manual searches in the hourly budget, but only automatic searches
+ * advance the cadence of the next automatic search.
  */
 class RateGuard(context: Context) {
     private val prefs: SharedPreferences =
@@ -34,24 +35,34 @@ class RateGuard(context: Context) {
 
     fun usedInHour(): Int = requests(System.currentTimeMillis()).size
 
-    /** Records every actual matching HTTP request, not the scheduled timer tick. */
-    fun recordRequest() {
+    /**
+     * All real searches count towards the shared hourly quota. Only real
+     * automatic searches advance the 15-minute automatic timetable.
+     * Manual and user-driven portal searches never reset that timer.
+     */
+    fun recordRequest(automatic: Boolean = false) {
         val now = System.currentTimeMillis()
         val list = requests(now)
         list.add(now)
-        prefs.edit().putString("requests", list.joinToString(","))
-            .putLong("last_request", now).apply()
+        val editor = prefs.edit().putString("requests", list.joinToString(","))
+            .putLong("last_request", now)
+        if (automatic) editor.putLong("last_automatic_request", now)
+        editor.apply()
+    }
+
+    fun nextScheduledAutomatic(chosenSeconds: Int): Long {
+        val now = System.currentTimeMillis()
+        val lastAuto = prefs.getLong("last_automatic_request", 0L)
+        if (lastAuto <= 0L) return now
+        return maxOf(now, lastAuto + maxOf(minSpacing, chosenSeconds * 1000L))
     }
 
     fun nextAllowed(chosenSeconds: Int): Long {
         val now = System.currentTimeMillis()
         val list = requests(now)
-        var due = maxOf(now, blockedUntil)
-        if (list.isNotEmpty()) {
-            due = maxOf(due, list.last() + maxOf(minSpacing, chosenSeconds * 1000L))
-            if (list.size >= maxRequestsPerHour) {
-                due = maxOf(due, list[list.size - maxRequestsPerHour] + hour + safety)
-            }
+        var due = maxOf(nextScheduledAutomatic(chosenSeconds), blockedUntil)
+        if (list.size >= maxRequestsPerHour) {
+            due = maxOf(due, list[list.size - maxRequestsPerHour] + hour + safety)
         }
         return due
     }
