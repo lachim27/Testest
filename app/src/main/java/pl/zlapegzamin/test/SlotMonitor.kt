@@ -103,7 +103,11 @@ class SlotMonitor(
             // Native Handler keeps examining the portal session even when
             // WebView's JavaScript timers are throttled on a locked screen.
             if (enabled && supported && isPortal(web.url)) {
-                web.evaluateJavascript("window.__zlapSessionTick && window.__zlapSessionTick();", null)
+                web.evaluateJavascript("Boolean(window.__zlapSessionTick && window.__zlapSessionTick());") { result ->
+                    if (result == "true" && requestReady && !sessionExpired) {
+                        prefs.edit().putLong("web_heartbeat_at", System.currentTimeMillis()).apply()
+                    }
+                }
                 inspectSessionState()
             }
             if (enabled && supported && now >= blockedUntil && now - maxOf(lastCheckedAt, monitorStartedAt) > 15 * 60_000L && now - lastStaleAlertAt > 60 * 60_000L) {
@@ -334,7 +338,9 @@ class SlotMonitor(
                 "ready" -> {
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
-                    prefs.edit().putLong("authenticated_at", lastReadyAt).apply()
+                    prefs.edit()
+                        .putLong("authenticated_at", lastReadyAt)
+                        .putLong("web_heartbeat_at", lastReadyAt).apply()
                     lastAttemptAt = lastReadyAt - effectiveMs
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
