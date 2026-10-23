@@ -294,6 +294,41 @@ class DashboardActivity : Activity() {
         }
     }
 
+
+    private fun switchAutoReserve() {
+        if (monitor.autoReserveEnabled) {
+            monitor.setAutoReserve(false)
+            show("settings")
+            return
+        }
+        if (monitor.dateFrom.isBlank() || monitor.dateTo.isBlank()) {
+            Toast.makeText(this, "Najpierw ustaw dokładny zakres dat Od–Do.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val style = if (darkMode) android.R.style.Theme_Material_Dialog_Alert
+            else android.R.style.Theme_Material_Light_Dialog_Alert
+        android.app.AlertDialog.Builder(this, style)
+            .setTitle("Włączyć autorezerwację?")
+            .setMessage(
+                "ZłapEgzamin spróbuje samodzielnie ZAJĄĆ jedno wolne miejsce na egzamin " +
+                "praktyczny kat. B w MORD Kraków w zakresie " +
+                monitor.dateFrom + " – " + monitor.dateTo + ".\n\n" +
+                "To wykonuje rzeczywistą operację na Twoim koncie info-kierowca.pl. " +
+                "Po potwierdzeniu rezerwacji dostaniesz alert na telefon i Telegram. " +
+                "Opłacenie egzaminu nadal należy do Ciebie (zwykle do 30 minut). " +
+                "Po sukcesie autorezerwacja wyłączy się sama."
+            )
+            .setPositiveButton("Włącz autorezerwację") { _, _ ->
+                if (monitor.setAutoReserve(true))
+                    Toast.makeText(this, "Autorezerwacja włączona. Czekam na poprawny odczyt.", Toast.LENGTH_LONG).show()
+                else
+                    Toast.makeText(this, "Zakres dat jest nieprawidłowy (maks. 90 dni).", Toast.LENGTH_LONG).show()
+                show("settings")
+            }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+
     private fun homePage() {
         val page = scroll()
         val hero = card().apply {
@@ -344,6 +379,23 @@ class DashboardActivity : Activity() {
         put(status, text("Ręczna kontrola pomija harmonogram aplikacji, ale nie blokadę HTTP 429 portalu.", 12f, muted), 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
         put(page, status, 12)
+        val reservation = card()
+        put(reservation, text("TYMCZASOWA AUTOREZERWACJA", 12f, blue, true), 9)
+        put(reservation, text(if (monitor.autoReserveEnabled)
+            "● Aktywna – aplikacja może zająć jedno pasujące miejsce"
+            else "○ Wyłączona", 15f, ink, true), 10)
+        put(reservation, text("Ostatni stan: " + monitor.lastBookingStatus, 13f, muted), 8)
+        if (monitor.lastBookingDate.isNotBlank()) {
+            put(reservation, text("Termin: " + monitor.lastBookingDate.replace('T', ' ').take(16),
+                13f, muted), 8)
+        }
+        put(reservation, action(if (monitor.autoReserveEnabled)
+            "Wyłącz autorezerwację" else "Ustaw autorezerwację", false) {
+            if (monitor.autoReserveEnabled) monitor.setAutoReserve(false).also { show("start") }
+            else show("settings")
+        }, 10)
+        put(reservation, action("Otwórz portal, aby opłacić rezerwację") { show("portal") })
+        put(page, reservation, 14)
         put(page, action("⚙  Ustawienia: interwał, daty, Telegram", false) { show("settings") }, 20)
 
         put(page, text("Dostępne terminy", 19f, ink, true), 12)
@@ -606,6 +658,28 @@ class DashboardActivity : Activity() {
             show("settings")
         })
         put(page, dates, 19)
+
+        val booking = card()
+        put(booking, text("AUTOREZERWACJA – ZAJĘCIE MIEJSCA", 12f, blue, true), 12)
+        put(booking, text("ZłapEgzamin sam utworzy tymczasową rezerwację dla " +
+            "jednego terminu spełniającego zakres dat. Po potwierdzeniu przez portal wyśle " +
+            "powiadomienie i zatrzyma automat. Nie pobiera pieniędzy.", 14f, muted), 10)
+        put(booking, text(if (monitor.autoReserveEnabled) "● WŁĄCZONA" else "○ WYŁĄCZONA",
+            17f, if (monitor.autoReserveEnabled) green else muted, true), 9)
+        put(booking, text("Status: " + monitor.lastBookingStatus, 13f, muted), 8)
+        if (monitor.lastReservationId.isNotBlank()) {
+            put(booking, text("ID rezerwacji: " + monitor.lastReservationId,
+                12f, muted), 11)
+        }
+        put(booking, action(if (monitor.autoReserveEnabled)
+            "Wyłącz autorezerwację" else "Włącz autorezerwację") {
+            switchAutoReserve()
+        }, 11)
+        put(booking, action("Przejdź do portalu i opłać termin", false) {
+            show("portal")
+        })
+        put(page, booking, 19)
+
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(frequency, text("Wybrano: " + monitor.intervalSeconds + " s. Dla ochrony przed HTTP 429 monitor wykonuje nie więcej niż 4 próby/h i zachowuje co najmniej 15 minut przerwy.", 14f, muted), 12)
