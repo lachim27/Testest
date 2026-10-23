@@ -188,63 +188,104 @@
     }
     return sendOriginal.apply(this, arguments);
   };
-  // Mirror Windows: click the portal's own session-extension button
-  // only while its expiration warning is actually visible.
+  // Extend the user's session via the portal's OWN visible control.
+  // No undocumented authentication endpoint or identity-provider bypass.
   var lastExtensionClick = 0;
   var lastAuthSignal = 0;
   var hadAuthenticatedRequest = false;
+  var lastSessionScan = 0;
+  function normalizeLabel(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
+  }
   function visible(el) {
-    if (!el || !el.isConnected) return false;
-    var style = window.getComputedStyle(el);
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-      el.getClientRects().length > 0;
+    if (!el || !el.isConnected || el.disabled) return false;
+    for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+      var st = window.getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' ||
+          st.visibility === 'collapse') return false;
+    }
+    return el.getClientRects().length > 0;
+  }
+  function sessionButtons(root, results, depth) {
+    if (!root || depth > 3 || results.length >= 1500) return;
+    try {
+      var nodes = root.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], a');
+      for (var i = 0; i < nodes.length && results.length < 1500; i++) {
+        results.push(nodes[i]);
+        if (nodes[i].shadowRoot) sessionButtons(nodes[i].shadowRoot, results, depth + 1);
+      }
+    } catch (_) {}
   }
   function extendWhenPrompted() {
     try {
-      if (!document.body || Date.now() - lastExtensionClick < 60000) return;
-      var nodes = document.querySelectorAll('button, [role="button"], input[type="button"]');
-      var candidate = null;
+      if (!document.body || Date.now() - lastExtensionClick < 60000) return false;
+      var nodes = [];
+      sessionButtons(document, nodes, 0);
       for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var label = (node.innerText || node.value || node.getAttribute('aria-label') || '')
-          .replace(/\s+/g, ' ').trim().toLowerCase();
-        if (/przedłuż\s+sesj|przedluz\s+sesj|extend\s+session|pozostań\s+zalogowan/.test(label)) {
-          candidate = node;
-          break;
-        }
+        var el = nodes[i];
+        var label = normalizeLabel(
+          el.innerText || el.textContent || el.value || el.getAttribute('aria-label') ||
+          el.getAttribute('title'));
+        var exactExtension = /\b(przedluz|odnow|wydluz)\b.*\b(sesj|logowan)\b/.test(label) ||
+          /\b(extend|renew)\b.*\bsession\b/.test(label) ||
+          /pozostan.*zalogowan/.test(label);
+        var dialog = el.closest('[role="dialog"], [aria-modal="true"], .modal, .dialog');
+        var context = dialog || (el.parentElement && el.parentElement.parentElement);
+        var warning = normalizeLabel(context && context.innerText);
+        var shortButton = /^(przedluz|odnow|wydluz)$/.test(label) &&
+          /\b(sesj|wylogowan|logowan)\b/.test(warning);
+        if (!exactExtension && !shortButton) continue;
+        if (!visible(el)) continue;
+        lastExtensionClick = Date.now();
+        el.click();
+        send({kind:'extended'}); // attempted click, not server confirmation
+        return true;
       }
-      if (!candidate || !visible(candidate) || candidate.disabled) return;
-      var dialog = candidate.closest('[role="dialog"], [aria-modal="true"], .modal');
-      var context = dialog || candidate.parentElement?.parentElement || document.body;
-      var warning = (context.innerText || '').toLowerCase();
-      if (!/sesja|wygaś|wygas|session/.test(warning)) return;
-      lastExtensionClick = Date.now();
-      candidate.click();
-      send({kind:'extended'});
     } catch (_) {}
+    return false;
   }
   function detectExpiredSession() {
     try {
       if (!hadAuthenticatedRequest || !document.body ||
           Date.now() - lastAuthSignal < 60000) return;
-      var path = (location.pathname || '').toLowerCase();
-      var authPath = /login|signin|sign-in|logowanie|authorize|authentication/.test(path);
-      var content = (document.body.innerText || '').slice(0, 2500).toLowerCase();
-      var expiredText = /sesja (wygasła|wygasla|zakończona)|session expired|zaloguj się ponownie|ponowne logowanie/.test(content);
-      if (authPath || expiredText) {
+      var path = normalizeLabel(location.pathname || '');
+      var isLoginPage = /login|signin|sign-in|logowanie|authorize|authentication/.test(path);
+      var content = normalizeLabel((document.body.innerText || '').slice(0, 4000));
+      var isExpired = /sesja (wygasla|zakonczona)|session expired|zaloguj sie ponownie|ponowne logowanie|zostales wylogowany/.test(content);
+      if (isLoginPage || isExpired) {
         lastAuthSignal = Date.now();
         saved = null;
         send({kind:'auth', status:401});
       }
     } catch (_) {}
   }
-  window.setInterval(function () {
+  window.__zlapSessionTick = function () {
     extendWhenPrompted();
     detectExpiredSession();
-  }, 3000);
-  window.__zlapCheckNow = function () {
+    return true;
+  };
+  // Mutation observer responds when the warning appears even if timers are throttled.
+  function observeSessionDialog() {
+    if (!document.documentElement || window.__zlapSessionObserver) return;
+    window.__zlapSessionObserver = new MutationObserver(function () {
+      var now = Date.now();
+      if (now - lastSessionScan < 1000) return;
+      lastSessionScan = now;
+      window.__zlapSessionTick();
+    });
+    window.__zlapSessionObserver.observe(document.documentElement,
+      {childList:true, subtree:true, characterData:true});
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', observeSessionDialog, {once:true});
+  } else {
+    observeSessionDialog();
+  }
+  window.setInterval(window.__zlapSessionTick, 3000);
+  window.__zlapCheckNow = function (mode) {
     if (!saved || running || requestInFlight || Date.now() < cooldownUntil ||
-        Date.now() - lastRequest < 15000) return false;
+        (mode !== 'manual' && Date.now() - lastRequest < 15000)) return false;
     running = true;
     lastRequest = Date.now();
     send({kind:'request'});
