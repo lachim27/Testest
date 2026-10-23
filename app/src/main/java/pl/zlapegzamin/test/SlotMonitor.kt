@@ -67,6 +67,7 @@ class SlotMonitor(
     var diagnostics = "Oczekiwanie na skrypt strony..."
         private set
     private var hookDetected = false
+    private var sessionAlertSent = false
 
     val dateFrom: String get() = prefs.getString("date_from", "") ?: ""
     val dateTo: String get() = prefs.getString("date_to", "") ?: ""
@@ -198,6 +199,7 @@ class SlotMonitor(
                     requestReady = true
                     lastReadyAt = System.currentTimeMillis()
                     lastAttemptAt = lastReadyAt - effectiveMs
+                    sessionAlertSent = false
                     lastError = ""
                     diagnostics = "Zidentyfikowano zapytanie MORD Kraków, B. Oczekiwanie na odpowiedź."
                 }
@@ -228,6 +230,11 @@ class SlotMonitor(
                     requestPending = false
                     requestReady = false
                     lastError = "Sesja wygasła (HTTP " + message.optInt("status") + "). Zaloguj się ponownie."
+                    if (!sessionAlertSent) {
+                        sessionAlertSent = true
+                        sendTelegram(lastError)
+                        notify(lastError, "ZłapEgzamin – sesja wygasła")
+                    }
                 }
                 "http" -> { requestPending = false; adaptiveMs = minOf(4 * hourMs, maxOf(120000L, effectiveMs * 2)); prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply(); lastError = "Odczyt nieudany: HTTP " + message.optInt("status") }
                 "network" -> { requestPending = false; lastError = "Błąd sieci podczas sprawdzania terminów." }
@@ -323,7 +330,7 @@ class SlotMonitor(
         notify("To jest test powiadomienia ZłapEgzamin, nie rzeczywisty termin egzaminu.")
     }
 
-    private fun notify(body: String) {
+    private fun notify(body: String, title: String = "ZłapEgzamin – nowy wolny termin") {
         if (Build.VERSION.SDK_INT >= 33 &&
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             lastError = "Włącz powiadomienia ZłapEgzamin w ustawieniach Androida."
@@ -338,7 +345,7 @@ class SlotMonitor(
         )
         val note = Notification.Builder(activity, "exam_dates")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("ZłapEgzamin – nowy wolny termin")
+            .setContentTitle(title)
             .setContentText(body)
             .setStyle(Notification.BigTextStyle().bigText(body))
             .setContentIntent(pending)
