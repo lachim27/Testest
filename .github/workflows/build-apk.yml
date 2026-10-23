@@ -41,6 +41,9 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Validate portal script
+        run: node --check app/src/main/assets/slot-hook.js
+
       - name: Build APK
         run: gradle assembleDebug --no-daemon
 
