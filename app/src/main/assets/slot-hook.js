@@ -195,6 +195,7 @@
   var lastSessionHeartbeat = 0;
   var hadAuthenticatedRequest = false;
   var lastSessionScan = 0;
+  var lastSoftActivity = Date.now();
   function normalizeLabel(value) {
     return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/\s+/g, ' ').trim();
@@ -246,6 +247,24 @@
     } catch (_) {}
     return false;
   }
+  // Some portals implement the 10-minute idle timer in JavaScript.
+  // Dispatching ordinary *synthetic* activity events may reset such a timer,
+  // without generating extra requests to the exam API. It does NOT refresh
+  // the server session or bypass any reauthentication requirement.
+  function maintainPageActivity() {
+    try {
+      if (!hadAuthenticatedRequest || !saved || !document.body) return;
+      var now = Date.now();
+      if (now - lastSoftActivity < 3 * 60 * 1000) return;
+      lastSoftActivity = now;
+      var target = document.body;
+      target.dispatchEvent(new MouseEvent('mousemove', {bubbles:true}));
+      target.dispatchEvent(new Event('scroll', {bubbles:true}));
+      if (typeof PointerEvent === 'function') {
+        target.dispatchEvent(new PointerEvent('pointermove', {bubbles:true}));
+      }
+    } catch (_) {}
+  }
   function detectExpiredSession() {
     try {
       if (!document.body || Date.now() - lastAuthSignal < 60000) return;
@@ -268,6 +287,7 @@
   window.__zlapSessionTick = function () {
     detectExpiredSession();
     extendWhenPrompted();
+    maintainPageActivity();
     return true;
   };
   // Mutation observer responds when the warning appears even if timers are throttled.
