@@ -99,6 +99,11 @@ class SlotMonitor(
             if (!resumed || destroyed) return
             val now = System.currentTimeMillis()
             if (requestPending && now - lastAttemptAt > 90000L) requestPending = false
+            // Native Handler keeps examining the portal session even when
+            // WebView's JavaScript timers are throttled on a locked screen.
+            if (enabled && supported && isPortal(web.url)) {
+                web.evaluateJavascript("window.__zlapSessionTick && window.__zlapSessionTick();", null)
+            }
             if (enabled && supported && now >= blockedUntil && now - maxOf(lastCheckedAt, monitorStartedAt) > 15 * 60_000L && now - lastStaleAlertAt > 60 * 60_000L) {
                 lastStaleAlertAt = now
                 prefs.edit().putLong("stale_alert_at", now).apply()
@@ -123,6 +128,9 @@ class SlotMonitor(
         val manager = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
             NotificationChannel("exam_dates", "Nowe terminy egzaminów", NotificationManager.IMPORTANCE_HIGH)
+        )
+        manager.createNotificationChannel(
+            NotificationChannel("session_alerts", "Sesja i problemy monitorowania", NotificationManager.IMPORTANCE_HIGH)
         )
 
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
@@ -200,7 +208,8 @@ class SlotMonitor(
 
     /**
      * One manual check through the authenticated portal WebView. It bypasses only
-     * the periodic scheduler, NEVER the persistent rate budget / Retry-After.
+     * the periodic scheduler (including its local 15-minute spacing / hourly
+     * budget), but NEVER a server HTTP 429 / Retry-After lock.
      * The user must first open the exam results in the portal.
      */
     fun checkNow(onResult: (String) -> Unit) {
@@ -221,18 +230,17 @@ class SlotMonitor(
             return
         }
         val now = System.currentTimeMillis()
-        val next = nextAllowed()
-        if (next > now) {
-            val formatted = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL"))
-                .format(Date(next))
-            onResult("Limit zapytań: następny odczyt najwcześniej $formatted.")
+        // The manual button skips only our 15-minute / 4-per-hour automatic
+        // scheduler. A server HTTP 429 / Retry-After lock is never bypassed.
+        if (now < blockedUntil) {
+            onResult("HTTP 429: portal wstrzymał odczyty do " + clock(blockedUntil) + ".")
             return
         }
         requestPending = true
         lastAttemptAt = now
         nextJitterMs = 0L
         web.evaluateJavascript(
-            "Boolean(window.__zlapCheckNow && window.__zlapCheckNow());"
+            "Boolean(window.__zlapCheckNow && window.__zlapCheckNow('manual'));"
         ) { value ->
             if (value == "true") {
                 event("Ręczne sprawdzenie uruchomione")
@@ -321,6 +329,10 @@ class SlotMonitor(
                     }
                 }
                 "auth" -> reportExpiredSession("HTTP " + message.optInt("status") + " lub ekran logowania")
+                "extended" -> {
+                    event("Kliknięto w portalu: Przedłuż sesję (oczekiwanie na potwierdzenie)")
+                    diagnostics = "Wysłano kliknięcie Przedłuż sesję. Sprawdzam, czy portal je zaakceptował."
+                }
                 "http" -> { requestPending = false; adaptiveMs = minOf(4 * hourMs, maxOf(120000L, effectiveMs * 2)); prefs.edit().putLong("adaptive_interval_ms", adaptiveMs).apply(); lastError = "Odczyt nieudany: HTTP " + message.optInt("status") }
                 "network" -> { requestPending = false; lastError = "Błąd sieci podczas sprawdzania terminów." }
                 "format" -> lastError = "Nieznany format odpowiedzi. Pola: " +
@@ -440,7 +452,11 @@ class SlotMonitor(
         val pending = PendingIntent.getActivity(
             activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val note = Notification.Builder(activity, "exam_dates")
+        val isSessionAlert = title.contains("sesja", ignoreCase = true) ||
+            title.contains("monitor wymaga", ignoreCase = true) ||
+            title.contains("limit zapytań", ignoreCase = true)
+        val channel = if (isSessionAlert) "session_alerts" else "exam_dates"
+        val note = Notification.Builder(activity, channel)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
@@ -449,7 +465,7 @@ class SlotMonitor(
             .setAutoCancel(true)
             .build()
         (activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(303, note)
+            .notify(if (isSessionAlert) 304 else 303, note)
     }
 
     private fun clock(at: Long): String =
