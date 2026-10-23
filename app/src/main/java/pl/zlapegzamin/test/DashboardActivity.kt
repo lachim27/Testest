@@ -164,15 +164,20 @@ class DashboardActivity : Activity() {
             setPadding(dp(12), dp(9), dp(12), dp(10))
         }
         put(root, navigation)
+        // The system may lay out the Activity edge-to-edge even without an opt-in.
+        // Apply the real insets to the root, not only the bottom tab bar.
         if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
             root.setOnApplyWindowInsetsListener { view, insets ->
-                val bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-                navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + bottom)
+                val bars = insets.getInsets(
+                    WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars() or
+                        WindowInsets.Type.displayCutout()
+                )
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 insets
             }
         } else {
-            val resource = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-            if (resource > 0) navigation.setPadding(dp(12), dp(9), dp(12), dp(10) + resources.getDimensionPixelSize(resource))
+            root.fitsSystemWindows = true
         }
         setContentView(root)
 
@@ -226,8 +231,10 @@ class DashboardActivity : Activity() {
 
         val status = card()
         put(status, text("AUTOMATYCZNE SPRAWDZANIE", 12f, muted, true), 12)
-        put(status, text(if (monitor.enabled) "●  Włączone" else "●  Wyłączone",
-            25f, if (monitor.enabled) green else Color.rgb(255, 188, 105), true), 10)
+        val connected = monitor.enabled && monitor.requestReady && monitor.lastCheckedAt > 0L
+        val stateLabel = when { !monitor.enabled -> "●  Wyłączone"; connected -> "●  Połączono"; else -> "●  Oczekiwanie na portal" }
+        put(status, text(stateLabel,
+            23f, if (connected) green else Color.rgb(255, 188, 105), true), 10)
         put(status, text(monitor.status(), 14f, muted), 15)
         put(status, action(if (monitor.enabled) "Wstrzymaj monitorowanie" else "Włącz monitorowanie") {
             monitor.setEnabled(!monitor.enabled)
