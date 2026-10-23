@@ -163,6 +163,40 @@
     }
     return sendOriginal.apply(this, arguments);
   };
+  // Mirror Windows: click the portal's own session-extension button
+  // only while its expiration warning is actually visible.
+  var lastExtensionClick = 0;
+  function visible(el) {
+    if (!el || !el.isConnected) return false;
+    var style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+      el.getClientRects().length > 0;
+  }
+  function extendWhenPrompted() {
+    try {
+      if (!document.body || Date.now() - lastExtensionClick < 60000) return;
+      var nodes = document.querySelectorAll('button, [role="button"], input[type="button"]');
+      var candidate = null;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var label = (node.innerText || node.value || node.getAttribute('aria-label') || '')
+          .replace(/\\s+/g, ' ').trim().toLowerCase();
+        if (label === 'przedłuż sesję' || label === 'przedluz sesje') {
+          candidate = node;
+          break;
+        }
+      }
+      if (!candidate || !visible(candidate) || candidate.disabled) return;
+      var dialog = candidate.closest('[role="dialog"], [aria-modal="true"], .modal');
+      var context = dialog || candidate.parentElement?.parentElement || document.body;
+      var warning = (context.innerText || '').toLowerCase();
+      if (!/sesja|wygaś|wygas|session/.test(warning)) return;
+      lastExtensionClick = Date.now();
+      candidate.click();
+      send({kind:'extended'});
+    } catch (_) {}
+  }
+  window.setInterval(extendWhenPrompted, 3000);
   window.__zlapCheckNow = function () {
     if (!saved || running || requestInFlight || Date.now() < cooldownUntil ||
         Date.now() - lastRequest < 15000) return false;
