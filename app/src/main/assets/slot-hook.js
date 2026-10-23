@@ -192,6 +192,7 @@
   // No undocumented authentication endpoint or identity-provider bypass.
   var lastExtensionClick = 0;
   var lastAuthSignal = 0;
+  var lastSessionHeartbeat = 0;
   var hadAuthenticatedRequest = false;
   var lastSessionScan = 0;
   function normalizeLabel(value) {
@@ -247,22 +248,26 @@
   }
   function detectExpiredSession() {
     try {
-      if (!hadAuthenticatedRequest || !document.body ||
-          Date.now() - lastAuthSignal < 60000) return;
+      if (!document.body || Date.now() - lastAuthSignal < 60000) return;
       var path = normalizeLabel(location.pathname || '');
-      var isLoginPage = /login|signin|sign-in|logowanie|authorize|authentication/.test(path);
-      var content = normalizeLabel((document.body.innerText || '').slice(0, 4000));
-      var isExpired = /sesja (wygasla|zakonczona)|session expired|zaloguj sie ponownie|ponowne logowanie|zostales wylogowany/.test(content);
-      if (isLoginPage || isExpired) {
+      var text = normalizeLabel((document.body.innerText || '').slice(0, 12000));
+      // Exact public portal logout screen: "Wylogowano z powodu nieaktywności.
+      // Sesja wygasła po braku aktywności."  Works after full page
+      // navigation, when in-page "hadAuthenticatedRequest" has been reset.
+      var idleLogout = /wylogowano z powodu nieaktywnosci/.test(text) ||
+        /sesja wygasla po braku aktywnosci/.test(text);
+      var genericExpired = /sesja (wygasla|zakonczona)|session expired|zaloguj sie ponownie|ponowne logowanie|zostales wylogowany/.test(text);
+      var onLoginRoute = /login|signin|sign-in|logowanie|authorize|authentication/.test(path);
+      if (idleLogout || (hadAuthenticatedRequest && (onLoginRoute || genericExpired))) {
         lastAuthSignal = Date.now();
         saved = null;
-        send({kind:'auth', status:401});
+        send({kind:'auth', status:401, reason:idleLogout ? 'idle' : 'login'});
       }
     } catch (_) {}
   }
   window.__zlapSessionTick = function () {
-    extendWhenPrompted();
     detectExpiredSession();
+    extendWhenPrompted();
     return true;
   };
   // Mutation observer responds when the warning appears even if timers are throttled.
