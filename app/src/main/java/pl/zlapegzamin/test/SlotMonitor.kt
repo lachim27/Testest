@@ -340,7 +340,8 @@ class SlotMonitor(
                     lastReadyAt = System.currentTimeMillis()
                     prefs.edit()
                         .putLong("authenticated_at", lastReadyAt)
-                        .putLong("web_heartbeat_at", lastReadyAt).apply()
+                        .putLong("web_heartbeat_at", lastReadyAt)
+                        .putBoolean("session_expired", false).apply()
                     lastAttemptAt = lastReadyAt - effectiveMs
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
