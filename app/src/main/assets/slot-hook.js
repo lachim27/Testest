@@ -33,7 +33,7 @@
     if (!isTarget(url)) return false;
     send({kind:'endpoint'});
     if (typeof body !== 'string') { send({kind:'body', detail:'not-text'}); return false; }
-    if (!selected(body)) {
+    if (!body.trim()) {
       var fields = [];
       try { fields = Object.keys(JSON.parse(body)).filter(function(k){ return /organization|category|exam|center|type/i.test(k); }).slice(0,12); } catch (_) {}
       send({kind:'filter', fields:fields});
