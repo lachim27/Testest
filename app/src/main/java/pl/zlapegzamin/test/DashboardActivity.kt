@@ -706,17 +706,27 @@ class DashboardActivity : Activity() {
         put(page, action("Otwórz Portal") { show("portal") })
     }
     private fun renewSession() {
-        // Refresh the authenticated portal using its own cookies.
-        // If the identity provider requires user interaction, the portal displays login.
         if (!::browser.isInitialized) return
         show("portal")
         val current = browser.url
-        if (current != null && Uri.parse(current).host?.endsWith("info-kierowca.pl") == true) {
-            browser.reload()
-        } else {
+        val onPortal = current != null &&
+            Uri.parse(current).host?.endsWith("info-kierowca.pl") == true
+        if (!onPortal) {
             browser.loadUrl(portal)
+            Toast.makeText(this, "Otwieram portal. Zaloguj się, jeśli to konieczne.", Toast.LENGTH_LONG).show()
+            return
         }
-        Toast.makeText(this, "Odświeżam sesję. Jeśli portal poprosi, zaloguj się ponownie.", Toast.LENGTH_LONG).show()
+        // Do NOT reload the portal: a reload can reset the observed exam
+        // request without prolonging server-side authentication.
+        browser.evaluateJavascript(
+            "Boolean(window.__zlapExtendNow && window.__zlapExtendNow());"
+        ) { clicked ->
+            val message = if (clicked == "true")
+                "Kliknięto przycisk przedłużenia w portalu. Sprawdź, czy sesja pozostała aktywna."
+            else
+                "Portal nie pokazuje przycisku Przedłuż sesję. Samo odświeżenie nie przedłuża logowania."
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun startBackgroundMonitor() {
