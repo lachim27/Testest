@@ -288,6 +288,12 @@ class DashboardActivity : Activity() {
             })
         }
     }
+    private fun manualCheck() {
+        monitor.checkNow { result ->
+            Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun homePage() {
         val page = scroll()
         val hero = card().apply {
@@ -332,6 +338,7 @@ class DashboardActivity : Activity() {
             monitor.setEnabled(!monitor.enabled)
             if (monitor.enabled) startBackgroundMonitor() else stopService(Intent(this, MonitorForegroundService::class.java))
         }, 11)
+        put(status, action("↻  Sprawdź teraz", false) { manualCheck() }, 11)
         put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
         put(page, status, 12)
         put(page, action("⚙  Ustawienia: interwał, daty, Telegram", false) { show("settings") }, 20)
@@ -462,6 +469,7 @@ class DashboardActivity : Activity() {
                 put(result, text("◷  " + date.replace('T', ' ').take(16), 16f, ink, true), 12)
             }
         }
+        put(result, action("↻  Wymuś odczyt teraz", false) { manualCheck() }, 10)
         put(result, action("Przejdź do oficjalnego portalu") { show("portal") })
         put(page, result, 16)
         put(page, text("Terminy mogą zniknąć przed ponownym sprawdzeniem. To nie jest potwierdzenie rezerwacji.", 12f, muted))
@@ -566,6 +574,7 @@ class DashboardActivity : Activity() {
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("ZłapEgzamin diagnostyka", report))
             Toast.makeText(this, "Skopiowano diagnostykę bez danych logowania", Toast.LENGTH_LONG).show()
         }, 10)
+        put(debug, action("↻  Sprawdź terminy teraz", false) { manualCheck() }, 10)
         put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
         put(page, debug, 19)
 
