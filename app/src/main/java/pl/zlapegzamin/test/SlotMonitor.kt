@@ -135,10 +135,13 @@ class SlotMonitor(
                 }
                 inspectSessionState()
             }
-            if (enabled && supported && now >= blockedUntil && now - maxOf(lastCheckedAt, monitorStartedAt) > 15 * 60_000L && now - lastStaleAlertAt > 60 * 60_000L) {
+            val staleAfterMs = maxOf(15 * 60_000L, effectiveAutoGapSeconds.toLong() * 1000L + 5 * 60_000L)
+            if (enabled && supported && now >= blockedUntil &&
+                now - maxOf(lastCheckedAt, monitorStartedAt) > staleAfterMs &&
+                now - lastStaleAlertAt > 60 * 60_000L) {
                 lastStaleAlertAt = now
                 prefs.edit().putLong("stale_alert_at", now).apply()
-                val warning = "Brak udanego odczytu terminów od ponad 15 minut. Sprawdź sesję w Portalu."
+                val warning = "Brak udanego odczytu terminów od dłuższego czasu. Sprawdź sesję w Portalu."
                 notify(warning, "ZłapEgzamin – monitor wymaga uwagi")
                 sendTelegram("ZłapEgzamin: " + warning)
             }
