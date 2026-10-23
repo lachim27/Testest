@@ -9,6 +9,18 @@
   var saved = null, running = false, lastRequest = 0, cooldownUntil = 0;
   var requestInFlight = false;
   var endpoint = /onecenterexam/i;
+  var observed = {};
+  function observe(url) {
+    try {
+      var u = new URL(String(url || ''), location.href);
+      if (u.protocol !== 'https:' || !/(^|\.)info-kierowca\.pl$/i.test(u.hostname)) return;
+      var path = u.pathname.slice(0, 100);
+      if (/exam|reservation|slot|termin|available/i.test(path) && !observed[path]) {
+        observed[path] = true;
+        send({kind:'candidate', path:path});
+      }
+    } catch (_) {}
+  }
   function send(obj) {
     try {
       if (window.ZlapBridge && window.ZlapBridge.postMessage) {
@@ -19,7 +31,7 @@
   function isTarget(url) {
     try {
       var parsed = new URL(String(url || ''), location.href);
-      return parsed.origin === location.origin && endpoint.test(parsed.pathname);
+      return parsed.protocol === 'https:' && /(^|\.)info-kierowca\.pl$/i.test(parsed.hostname) && endpoint.test(parsed.pathname);
     } catch (_) { return false; }
   }
   function selected(body) {
@@ -96,6 +108,7 @@
     var fetchOriginal = window.fetch;
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
+      observe(url);
       var body = init && init.body;
       var watchThis = typeof body === 'string' && remember(url, body);
       var requestBody = null;
@@ -126,6 +139,7 @@
   var sendOriginal = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
     this.__zlapURL = String(url || '');
+    observe(url);
     this.__zlapMethod = String(method || '');
     return openOriginal.apply(this, arguments);
   };
