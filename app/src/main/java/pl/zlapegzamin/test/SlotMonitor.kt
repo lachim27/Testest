@@ -67,7 +67,9 @@ class SlotMonitor(
     var diagnostics = "Oczekiwanie na skrypt strony..."
         private set
     private var hookDetected = false
-    private var sessionAlertSent = false
+    private var sessionAlertSent = prefs.getBoolean("session_alert_sent", false)
+    private var monitorStartedAt = System.currentTimeMillis()
+    private var lastStaleAlertAt = prefs.getLong("stale_alert_at", 0L)
 
     val dateFrom: String get() = prefs.getString("date_from", "") ?: ""
     val dateTo: String get() = prefs.getString("date_to", "") ?: ""
@@ -84,6 +86,14 @@ class SlotMonitor(
         override fun run() {
             if (!resumed || destroyed) return
             val now = System.currentTimeMillis()
+            if (requestPending && now - lastAttemptAt > 90000L) requestPending = false
+            if (enabled && supported && now >= blockedUntil && now - maxOf(lastCheckedAt, monitorStartedAt) > 15 * 60_000L && now - lastStaleAlertAt > 60 * 60_000L) {
+                lastStaleAlertAt = now
+                prefs.edit().putLong("stale_alert_at", now).apply()
+                val warning = "Brak udanego odczytu terminów od ponad 15 minut. Sprawdź sesję w Portalu."
+                notify(warning, "ZłapEgzamin – monitor wymaga uwagi")
+                sendTelegram("ZłapEgzamin: " + warning)
+            }
             if (enabled && supported && requestReady && now >= blockedUntil &&
                 now >= nextAllowed() && !requestPending && isPortal(web.url)) {
                 requestPending = true
@@ -200,6 +210,7 @@ class SlotMonitor(
                     lastReadyAt = System.currentTimeMillis()
                     lastAttemptAt = lastReadyAt - effectiveMs
                     sessionAlertSent = false
+                    prefs.edit().putBoolean("session_alert_sent", false).apply()
                     lastError = ""
                     diagnostics = "Zidentyfikowano zapytanie MORD Kraków, B. Oczekiwanie na odpowiedź."
                 }
@@ -232,6 +243,7 @@ class SlotMonitor(
                     lastError = "Sesja wygasła (HTTP " + message.optInt("status") + "). Zaloguj się ponownie."
                     if (!sessionAlertSent) {
                         sessionAlertSent = true
+                        prefs.edit().putBoolean("session_alert_sent", true).apply()
                         sendTelegram(lastError)
                         notify(lastError, "ZłapEgzamin – sesja wygasła")
                     }
@@ -276,6 +288,8 @@ class SlotMonitor(
         earliest = sorted.firstOrNull()?.replace('T', ' ')?.take(16) ?: ""
         slotCount = current.size
         lastCheckedAt = System.currentTimeMillis()
+        sessionAlertSent = false
+        prefs.edit().putBoolean("session_alert_sent", false).apply()
         lastNewCount = newItems.size
         lastError = ""
         diagnostics = "Poprawny odczyt: " + slotCount + " terminów."
