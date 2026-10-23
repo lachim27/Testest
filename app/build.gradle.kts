@@ -8,9 +8,9 @@ android {
     defaultConfig {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.3-monitor"
+        targetSdk = 34
+        versionCode = 2
+        versionName = "0.4-settings"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
