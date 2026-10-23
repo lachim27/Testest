@@ -231,7 +231,7 @@ class DashboardActivity : Activity() {
         put(tools, action("↗  Zaloguj się przez przeglądarkę") { outside(Uri.parse(portal)) }, 11)
         put(tools, action("🔔  Test powiadomienia", false) { monitor.testNotification() })
         put(page, tools, 20)
-        put(page, text("Wersja 3.7 Android • Monitoring co minimum 15 minut tylko podczas używania aplikacji.\n"+
+        put(page, text("Wersja 3.7 Android • Interwał sprawdzania ustawiany ręcznie tylko podczas używania aplikacji.\n"+
             "Bez działania w tle i bez automatycznej rezerwacji.", 12f, muted))
     }
     private fun settingsPage() {
@@ -262,6 +262,20 @@ class DashboardActivity : Activity() {
         put(alerts, action("Wyślij test powiadomienia") { monitor.testNotification() })
         put(page, alerts, 19)
 
+        val frequency = card()
+        put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
+        put(frequency, text("Aktualnie: " + monitor.intervalSeconds + " sekund. Wybierz interwał:", 14f, muted), 12)
+        for (seconds in listOf(30, 60, 120, 300, 600)) {
+            put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) { monitor.setInterval(seconds) }, 8)
+        }
+        val custom = EditText(this).apply { hint = "Własny interwał (10–3600 sekund)"; setTextColor(Color.WHITE); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_NUMBER }
+        put(frequency, custom, 10)
+        put(frequency, action("Zapisz własny interwał") {
+            val value = custom.text.toString().toIntOrNull()
+            if (value == null || value !in 10..3600) Toast.makeText(this, "Wpisz liczbę od 10 do 3600", Toast.LENGTH_LONG).show()
+            else monitor.setInterval(value)
+        })
+        put(page, frequency, 19)
         val telegram = card()
         put(telegram, text("TELEGRAM", 12f, Color.rgb(143, 182, 255), true), 12)
         put(telegram, text("Wpisz token bota i Chat ID. Dane pozostają w pamięci aplikacji.", 14f, muted), 12)
@@ -277,7 +291,7 @@ class DashboardActivity : Activity() {
         put(guide, text("1. Przejdź do Portal i zaloguj się.\n"+
             "2. Wybierz MORD Kraków, kategorię B i egzamin praktyczny.\n"+
             "3. Otwórz na portalu listę dostępnych terminów.\n"+
-            "4. Możesz wrócić do Start — aplikacja sprawdza terminy co minimum 15 minut, gdy jest otwarta.\n\n"+
+            "4. Możesz wrócić do Start — aplikacja sprawdza terminy zgodnie z ustawionym interwałem, gdy jest otwarta.\n\n"+
             "Gdy sesja wygaśnie, konieczne będzie ponowne zalogowanie. "+
             "Nie działa po zminimalizowaniu lub zamknięciu aplikacji.", 14f, muted))
         put(page, guide, 18)
