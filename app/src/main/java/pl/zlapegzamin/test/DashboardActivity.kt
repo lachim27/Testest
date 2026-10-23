@@ -46,6 +46,7 @@ class DashboardActivity : Activity() {
     private lateinit var navigation: LinearLayout
     private lateinit var monitor: SlotMonitor
     private var tab = "start"
+    private var calendarMonthOffset = 0
 
     private fun dp(v: Int) = (resources.displayMetrics.density * v).toInt()
     private fun round(color: Int, r: Int = 18) =
@@ -276,6 +277,7 @@ class DashboardActivity : Activity() {
         put(results, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 14f, muted), 14)
         put(results, action("Zobacz terminy w portalu", false) { show("portal") })
         put(page, results, 18)
+        calendarSection(page)
         val datesList = monitor.recentSlots
         if (datesList.isNotEmpty()) {
             val upcoming = card()
@@ -296,6 +298,76 @@ class DashboardActivity : Activity() {
         put(page, text("ZłapEgzamin Android • Monitor sprawdza terminy w granicach limitów portalu.\n"+
             "Monitor w tle działa dopóki Android utrzymuje proces aplikacji; po zamknięciu lub ubiciu procesu zatrzyma się. Bez automatycznej rezerwacji.", 12f, muted))
     }
+    private fun calendarSection(page: LinearLayout) {
+        val month = java.time.YearMonth.now().plusMonths(calendarMonthOffset.toLong())
+        val available = monitor.recentSlots.map { it.take(10) }.toSet()
+        val panel = card()
+        val heading = row()
+        val previous = text("❮", 19f, blue, true).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setOnClickListener {
+                if (calendarMonthOffset > 0) { calendarMonthOffset--; show("start") }
+            }
+        }
+        heading.addView(previous)
+        val monthName = month.atDay(1)
+            .format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy", Locale("pl", "PL")))
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pl", "PL")) else it.toString() }
+        heading.addView(text(monthName, 17f, ink, true).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(text("❯", 19f, blue, true).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setOnClickListener {
+                if (calendarMonthOffset < 5) { calendarMonthOffset++; show("start") }
+            }
+        })
+        put(panel, heading, 14)
+
+        val weekdays = row()
+        for (dayName in listOf("PN", "WT", "ŚR", "CZ", "PT", "SO", "ND")) {
+            weekdays.addView(text(dayName, 11f, muted, true).apply { gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        put(panel, weekdays, 8)
+        val offset = month.atDay(1).dayOfWeek.value - 1
+        val cellCount = ((offset + month.lengthOfMonth() + 6) / 7) * 7
+        for (week in 0 until cellCount / 7) {
+            val line = row()
+            for (weekday in 0 until 7) {
+                val number = week * 7 + weekday - offset + 1
+                val valid = number in 1..month.lengthOfMonth()
+                val date = if (valid) month.atDay(number).toString() else ""
+                val highlighted = date in available
+                val cell = text(if (valid) number.toString() else "", 14f,
+                    if (highlighted) Color.WHITE else if (valid) ink else muted,
+                    highlighted).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(1), dp(11), dp(1), dp(11))
+                    background = round(if (highlighted) blue else Color.WHITE, 12)
+                    if (highlighted) {
+                        setOnClickListener {
+                            val times = monitor.recentSlots.filter { it.startsWith(date) }
+                                .joinToString("\n") { it.replace('T', ' ').take(16) }
+                            android.app.AlertDialog.Builder(this@DashboardActivity)
+                                .setTitle("Terminy: $date")
+                                .setMessage("Ostatnio odczytane godziny:\n" + times +
+                                    "\n\nSprawdź aktualność w portalu.")
+                                .setPositiveButton("Otwórz portal") { _, _ -> show("portal") }
+                                .setNegativeButton("Zamknij", null)
+                                .show()
+                        }
+                    }
+                }
+                line.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            put(panel, line, 3)
+        }
+        put(panel, text("Niebieskie dni oznaczają terminy z ostatniego odczytu, nie rezerwacje.",
+            12f, muted), 0)
+        put(page, text("Kalendarz terminów", 19f, ink, true), 12)
+        put(page, panel, 20)
+    }
+
     private fun settingsPage() {
         val page = scroll()
         put(page, text("Ustawienia", 24f, ink, true), 6)
