@@ -17,6 +17,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.webkit.CookieManager
@@ -54,6 +56,49 @@ class DashboardActivity : Activity() {
     private lateinit var monitor: SlotMonitor
     private var tab = "start"
     private var calendarMonthOffset = 0
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var rateTickerEnabled = false
+    private var liveStatusView: TextView? = null
+    private var liveCountView: TextView? = null
+    private var liveExpiryView: TextView? = null
+    private var liveQuotaView: TextView? = null
+    private val rateTicker = object : Runnable {
+        override fun run() {
+            if (!rateTickerEnabled) return
+            updateLiveRateLabels()
+            uiHandler.postDelayed(this, 15_000L)
+        }
+    }
+
+    private fun updateLiveRateLabels() {
+        if (!::monitor.isInitialized || tab != "start") return
+        val now = System.currentTimeMillis()
+        val count = monitor.searchesThisHour
+        val formatter = SimpleDateFormat("HH:mm:ss", Locale("pl", "PL"))
+        fun time(at: Long) = formatter.format(java.util.Date(at))
+        liveStatusView?.text = monitor.status()
+        liveCountView?.text = "Zapytania w ostatnich 60 minutach: " + count +
+            " (próg automatycznego sprawdzania: 4)"
+        val first = monitor.nextCountDecreaseAt
+        val last = monitor.allCountedRequestsExpireAt
+        liveExpiryView?.text = if (count == 0) {
+            "Licznik wynosi 0. Kolejne zapytanie podniesie go o 1."
+        } else {
+            "Najbliższe zmniejszenie licznika: " + time(first) +
+                ". Bez nowych zapytań licznik spadnie do 0 o " + time(last) +
+                ". Jest to ruchome okno 60 minut."
+        }
+        val quota = monitor.nextQuotaSlotAt
+        val blocked = monitor.blockedUntil
+        liveQuotaView?.text = when {
+            blocked > now -> "Blokada HTTP 429 do " + time(blocked) + "."
+            quota > now -> "Automat czeka na zwolnienie limitu do " + time(quota) +
+                ". Ręczne sprawdzenie i odczyt w Portalu również liczą się do limitu."
+            count >= 4 -> "Limit automatu 4 na 60 minut osiągnięty."
+            else -> "W limicie lokalnym pozostało " + (4 - count) +
+                " automatycznych zapytań w obecnym oknie."
+        }
+    }
 
     private fun dp(v: Int) = (resources.displayMetrics.density * v).toInt()
     private fun round(color: Int, r: Int = 18) =
@@ -269,6 +314,10 @@ class DashboardActivity : Activity() {
     }
     private fun show(which: String) {
         tab = which
+        liveStatusView = null
+        liveCountView = null
+        liveExpiryView = null
+        liveQuotaView = null
         pages.removeAllViews()
         // Keep WebView in VISIBLE state even behind the opaque dashboard.
         // Android may throttle JS in an INVISIBLE WebView before the portal
@@ -384,12 +433,16 @@ class DashboardActivity : Activity() {
         }
         put(status, text(stateLabel,
             20f, if (connected) green else Color.rgb(164, 110, 34), true), 10)
-        put(status, text(monitor.status(), 14f, muted), 10)
+        liveStatusView = text(monitor.status(), 14f, muted)
+        put(status, liveStatusView!!, 10)
         if (monitor.requestReady && monitor.lastCheckedAt == 0L) {
             put(status, text("Portal wykryty, ale dane nie zostały jeszcze poprawnie pobrane. " +
                 "Sprawdź komunikaty w Opcjach → Diagnostyka.", 13f, muted), 10)
         }
-        put(status, text("Zapytania w ciągu godziny: " + monitor.searchesThisHour + "/4", 14f, ink, true), 5)
+        liveCountView = text("", 14f, ink, true)
+        put(status, liveCountView!!, 5)
+        liveExpiryView = text("", 12f, muted)
+        put(status, liveExpiryView!!, 9)
         val timeFormat = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL"))
         val planned = monitor.nextPlannedAutoAt
         val plannedLabel = when {
@@ -404,20 +457,9 @@ class DashboardActivity : Activity() {
         put(status, text("Ostatnie faktycznie wysłane zapytanie automatyczne: " +
             (if (lastAuto > 0L) timeFormat.format(java.util.Date(lastAuto))
              else "jeszcze nie wysłano"), 12f, muted), 8)
-        if (monitor.nextCheckAt > now + 3_000L) {
-            val reason = when {
-                monitor.blockedUntil > now -> "HTTP 429"
-                monitor.searchesThisHour >= 4 -> "limit 4 zapytań na godzinę"
-                else -> "krótka przerwa techniczna"
-            }
-            put(status, text("Odczyt przesunięty ($reason). Najwcześniej: " +
-                timeFormat.format(java.util.Date(monitor.nextCheckAt)), 13f, muted), 9)
-        } else if (overdue) {
-            put(status, text("Termin minął, ale nie potwierdzono rozpoczęcia odczytu. " +
-                "Sprawdź diagnostykę i czy WebView nadal działa.", 13f, Color.rgb(178, 90, 35), true), 9)
-        } else {
-            put(status, text("Ręczne sprawdzenie nie przesuwa automatycznego harmonogramu.", 12f, muted), 9)
-        }
+        liveQuotaView = text("", 13f, muted)
+        put(status, liveQuotaView!!, 9)
+        updateLiveRateLabels()
         if (monitor.lastAutoIssue.isNotBlank()) {
             put(status, text("Ostatni problem automatu: " + monitor.lastAutoIssue,
                 13f, Color.rgb(178, 90, 35)), 12)
@@ -807,7 +849,8 @@ class DashboardActivity : Activity() {
         put(debug, text(monitor.diagnostics, 14f, muted), 12)
         put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
         put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
-        put(debug, text("Zapytania z ostatniej godziny: " + monitor.searchesThisHour + "/4", 13f, muted), 10)
+        put(debug, text("Zapytania w ostatnich 60 minutach: " +
+            monitor.searchesThisHour + " (próg automatu: 4)", 13f, muted), 10)
         put(debug, text("Blokada HTTP 429: " +
             (if (monitor.blockedUntil > System.currentTimeMillis())
                 SimpleDateFormat("dd.MM HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.blockedUntil))
@@ -909,10 +952,16 @@ class DashboardActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::monitor.isInitialized) monitor.resume()
+        if (!rateTickerEnabled) {
+            rateTickerEnabled = true
+            uiHandler.post(rateTicker)
+        }
     }
     override fun onPause() {
-        // Keep the polling loop alive while the Activity remains in memory.
-        // The foreground service keeps the process prioritized after Home/screen lock.
+        // The foreground service continues separately; the UI refresh is only
+        // needed while the user can see the dashboard.
+        rateTickerEnabled = false
+        uiHandler.removeCallbacks(rateTicker)
         super.onPause()
     }
     override fun onNewIntent(intent: Intent) {
@@ -926,6 +975,8 @@ class DashboardActivity : Activity() {
         else super.onBackPressed()
     }
     override fun onDestroy() {
+        rateTickerEnabled = false
+        uiHandler.removeCallbacks(rateTicker)
         if (::monitor.isInitialized) monitor.destroy()
         if (::browser.isInitialized) {
             (browser.parent as? android.view.ViewGroup)?.removeView(browser)
