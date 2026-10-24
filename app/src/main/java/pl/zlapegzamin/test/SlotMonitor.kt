@@ -84,6 +84,14 @@ class SlotMonitor(
         onUpdate()
     }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
+    val backgroundSessionMaintenanceEnabled: Boolean
+        get() = prefs.getBoolean("background_session_maintenance", true)
+    fun setBackgroundSessionMaintenanceEnabled(value: Boolean) {
+        prefs.edit().putBoolean("background_session_maintenance", value).apply()
+        event(if (value) "Włączono podtrzymywanie sesji w tle"
+            else "Wyłączono podtrzymywanie sesji w tle")
+        onUpdate()
+    }
     val notifyFirst: Boolean get() = prefs.getBoolean("notify_first", false)
     val autoReserveEnabled: Boolean get() = prefs.getBoolean("auto_reserve", false)
     val lastBookingStatus: String get() = prefs.getString("booking_status", "Nie próbowano") ?: "Nie próbowano"
