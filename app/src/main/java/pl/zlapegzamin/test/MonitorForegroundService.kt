@@ -91,6 +91,25 @@ class MonitorForegroundService : Service() {
         // service cannot perform the authenticated JavaScript exam polling.
         if (!PortalMonitorBridge.attached()) {
             releaseCpuAwake()
+            // WebView was destroyed while a real booking request might have
+            // been executing. Do not retry /Reservations/create with unknown
+            // outcome when the Activity opens again.
+            val phase = prefs.getString("booking_phase", "idle").orEmpty()
+            if (phase == "creating" || phase == "pending") {
+                prefs.edit().putString("booking_phase", "uncertain")
+                    .putBoolean("auto_reserve", false)
+                    .putString("booking_status",
+                        "Okno portalu zamknięto w trakcie rezerwacji – sprawdź jej stan.")
+                    .apply()
+                if (!prefs.getBoolean("booking_background_interrupted_alerted", false)) {
+                    prefs.edit().putBoolean("booking_background_interrupted_alerted", true).apply()
+                    val bookingMsg = "Android zamknął portal w trakcie próby rezerwacji. " +
+                        "Jej wynik jest nieznany, więc wstrzymałem kolejne próby. " +
+                        "Sprawdź istniejące rezerwacje na info-kierowca.pl."
+                    showSessionWarning(bookingMsg)
+                    sendTelegram("ZłapEgzamin: " + bookingMsg)
+                }
+            }
             if (now - authenticatedAt >= 4 * minute &&
                 prefs.getBoolean("background_monitor_absent_alerted", false).not()) {
                 prefs.edit().putBoolean("background_monitor_absent_alerted", true).apply()
