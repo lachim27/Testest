@@ -400,6 +400,10 @@ class DashboardActivity : Activity() {
                 timeFormat.format(java.util.Date(planned))
         }
         put(status, text(plannedLabel, 13f, ink, true), 7)
+        val lastAuto = monitor.lastAutomaticRequestAt
+        put(status, text("Ostatnie faktycznie wysłane zapytanie automatyczne: " +
+            (if (lastAuto > 0L) timeFormat.format(java.util.Date(lastAuto))
+             else "jeszcze nie wysłano"), 12f, muted), 8)
         if (monitor.nextCheckAt > now + 3_000L) {
             val reason = when {
                 monitor.blockedUntil > now -> "HTTP 429"
