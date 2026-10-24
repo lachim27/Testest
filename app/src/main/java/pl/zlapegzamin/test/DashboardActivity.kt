@@ -777,15 +777,15 @@ class DashboardActivity : Activity() {
         })
         put(page, booking, 19)
 
-        val background = card()
-        put(background, text("PODTRZYMYWANIE SESJI W TLE", 12f, blue, true), 12)
-        put(background, text(
+        val sessionCard = card()
+        put(sessionCard, text("PODTRZYMYWANIE SESJI W TLE", 12f, blue, true), 12)
+        put(sessionCard, text(
             "Po zminimalizowaniu aplikacji usługa odświeża istniejące " +
             "uwierzytelnienie portalu mniej więcej co 4 minuty i wywołuje " +
             "jego mechanizm aktywności. Działa tylko przy włączonym monitorze " +
             "i dopóki Android utrzymuje jego proces. Może zużywać więcej baterii.",
             13f, muted), 12)
-        put(background, action(
+        put(sessionCard, action(
             if (monitor.backgroundSessionMaintenanceEnabled)
                 "Podtrzymywanie sesji w tle: WŁĄCZONE"
             else "Podtrzymywanie sesji w tle: WYŁĄCZONE",
@@ -800,16 +800,16 @@ class DashboardActivity : Activity() {
             SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL"))
                 .format(java.util.Date(lastRefresh))
         else "jeszcze niepotwierdzone"
-        put(background, text("Ostatnie potwierdzone odnowienie JWT: " +
+        put(sessionCard, text("Ostatnie potwierdzone odnowienie JWT: " +
             refreshInfo, 13f, muted), 8)
         if (monitor.lastBackgroundRefreshStatus.isNotBlank()) {
-            put(background, text("Stan odnawiania: " +
+            put(sessionCard, text("Stan odnawiania: " +
                 monitor.lastBackgroundRefreshStatus, 13f, muted), 8)
         }
-        put(background, text("Portal może wymagać ponownego logowania po " +
+        put(sessionCard, text("Portal może wymagać ponownego logowania po " +
             "upływie maksymalnego czasu sesji. Nawet przy włączonej opcji " +
             "system Android może ograniczyć proces lub sieć.", 12f, muted))
-        put(page, background, 19)
+        put(page, sessionCard, 19)
 
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
