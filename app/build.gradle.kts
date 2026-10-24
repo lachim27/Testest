@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.9-configurable-min-gap"
+        versionCode = 8
+        versionName = "0.10-background-session"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
