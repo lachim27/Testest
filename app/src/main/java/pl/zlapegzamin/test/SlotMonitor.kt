@@ -114,7 +114,12 @@ class SlotMonitor(
                     .putBoolean("auto_reserve", false).apply()
             }
             phase == "creating" || phase == "pending" ||
-                (phase == "idle" && priorId.isNotBlank()) -> {
+                // Legacy installations did not store booking_phase.
+                // After the user explicitly reviews a reservation and resets
+                // the guard, phase="idle" is intentional even if we retain
+                // the previous booking ID in the audit/status screen.
+                (phase == "idle" && !prefs.contains("booking_phase") &&
+                    priorId.isNotBlank()) -> {
                 prefs.edit()
                     .putString("booking_phase", "uncertain")
                     .putString("booking_status",
