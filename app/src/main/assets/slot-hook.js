@@ -197,7 +197,7 @@
   var lastSessionScan = 0;
   var lastSoftActivity = Date.now();
   function normalizeLabel(value) {
-    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[łŁ]/g, 'l')
       .toLowerCase().replace(/\s+/g, ' ').trim();
   }
   function visible(el) {
