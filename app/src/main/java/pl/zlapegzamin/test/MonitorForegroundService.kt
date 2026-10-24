@@ -102,10 +102,29 @@ class MonitorForegroundService : Service() {
             return
         }
 
+        // Invoke the live WebView on the UI thread. If its saved authenticated
+        // request disappeared, do not waste battery refreshing an unusable tab.
+        val portalAlive = PortalMonitorBridge.pulse()
+        if (!portalAlive) {
+            releaseCpuAwake()
+            return
+        }
+        val lastRefreshOk = prefs.getLong("native_refresh_ok_at", 0L)
+        // Some sessions have a fixed maximum lifetime. Stop the expensive CPU
+        // hold when renewals have ceased to work beyond roughly an hour.
+        if (now - authenticatedAt > 65 * minute &&
+            (lastRefreshOk <= 0L || now - lastRefreshOk > 9 * minute)) {
+            releaseCpuAwake()
+            if (!prefs.getBoolean("session_maximum_age_warned", false)) {
+                prefs.edit().putBoolean("session_maximum_age_warned", true).apply()
+                val msg = "Nie potwierdzono dalszego odnawiania sesji portalu po " +
+                    "około godzinie. Otwórz ZłapEgzamin i zaloguj się ponownie."
+                showSessionWarning(msg)
+                sendTelegram("ZłapEgzamin: " + msg)
+            }
+            return
+        }
         keepCpuAwake()
-        // Invoke the real WebView bridge from the native main thread. JavaScript
-        // setInterval is not a reliable background scheduler on Android.
-        PortalMonitorBridge.pulse()
 
         if (refreshBusy) return
         val lastAttempt = prefs.getLong("native_refresh_attempt_at", 0L)
@@ -135,15 +154,19 @@ class MonitorForegroundService : Service() {
                     .putLong("verified_portal_at", now)
                     .putString("native_refresh_status", "Odnowiono sesję przez JWT")
                     .putInt("native_refresh_failures", 0)
+                    .putInt("native_refresh_rejections", 0)
                     .putBoolean("native_refresh_issue_alerted", false)
                     .apply()
             }
             is PortalJwtRefresher.Result.Rejected -> {
-                val count = prefs.getInt("native_refresh_failures", 0) + 1
-                prefs.edit().putInt("native_refresh_failures", count)
+                val count = prefs.getInt("native_refresh_rejections", 0) + 1
+                prefs.edit().putInt("native_refresh_rejections", count)
+                    .putInt("native_refresh_failures",
+                        prefs.getInt("native_refresh_failures", 0) + 1)
                     .putString("native_refresh_status", "JWT HTTP " + result.status)
                     .apply()
-                // A second rejection rules out a transient cookie-rotation race.
+                // Two explicit auth rejections in a row reduce the risk of
+                // mistaking a brief token-rotation race for a logged-out user.
                 if (count >= 2 && !prefs.getBoolean("session_expired", false)) {
                     prefs.edit().putBoolean("session_expired", true)
                         .putBoolean("session_alert_sent", true).apply()
@@ -172,6 +195,7 @@ class MonitorForegroundService : Service() {
     private fun recordRefreshProblem(reason: String) {
         val count = prefs.getInt("native_refresh_failures", 0) + 1
         prefs.edit().putInt("native_refresh_failures", count)
+            .putInt("native_refresh_rejections", 0)
             .putString("native_refresh_status", reason).apply()
         if (count >= 2 && !prefs.getBoolean("native_refresh_issue_alerted", false)) {
             prefs.edit().putBoolean("native_refresh_issue_alerted", true).apply()
