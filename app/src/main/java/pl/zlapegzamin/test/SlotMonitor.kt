@@ -25,8 +25,9 @@ import java.net.HttpURLConnection
 import java.net.URLEncoder
 import kotlin.concurrent.thread
 
-/** Observes only the user's authenticated OneCenterExam requests inside WebView.
- *  Polling works while the activity is on screen, not as a background service.
+/** Observes the user's authenticated exam requests inside the Activity's WebView.
+ *  A foreground service can request a heartbeat while this WebView remains alive.
+ *  It does not keep the Activity alive after Android destroys it.
  */
 class SlotMonitor(
     private val activity: Activity,
@@ -116,6 +117,9 @@ class SlotMonitor(
     val nextCheckAt: Long get() = nextAllowed()
     val lastAutoIssue: String get() = prefs.getString("last_auto_issue", "").orEmpty()
     val lastAutoIssueAt: Long get() = prefs.getLong("last_auto_issue_at", 0L)
+    val lastBackgroundRefreshAt: Long get() = prefs.getLong("native_refresh_ok_at", 0L)
+    val lastBackgroundRefreshStatus: String get() =
+        prefs.getString("native_refresh_status", "").orEmpty()
     val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
         .split("|").filter { it.isNotBlank() }.take(20)
     val eventHistory: List<String> get() = (prefs.getString("events", "") ?: "")
@@ -134,12 +138,7 @@ class SlotMonitor(
             // Native Handler keeps examining the portal session even when
             // WebView's JavaScript timers are throttled on a locked screen.
             if (enabled && supported && isPortal(web.url)) {
-                web.evaluateJavascript("Boolean(window.__zlapSessionTick && window.__zlapSessionTick());") { result ->
-                    if (result == "true" && requestReady && !sessionExpired) {
-                        prefs.edit().putLong("web_heartbeat_at", System.currentTimeMillis()).apply()
-                    }
-                }
-                inspectSessionState()
+                pulseFromForegroundService()
             }
             val staleAfterMs = maxOf(15 * 60_000L, effectiveAutoGapSeconds.toLong() * 1000L + 5 * 60_000L)
             if (enabled && supported && now >= blockedUntil &&
@@ -280,7 +279,7 @@ class SlotMonitor(
         lastError = "Sesja wygasła ($reason). Zaloguj się ponownie."
         diagnostics = lastError
         prefs.edit().putBoolean("session_expired", true).apply()
-        if (!sessionAlertSent) {
+        if (!sessionAlertSent && !prefs.getBoolean("session_alert_sent", false)) {
             event("Sesja wygasła – ponów logowanie")
             sessionAlertSent = true
             prefs.edit().putBoolean("session_alert_sent", true).apply()
@@ -288,6 +287,26 @@ class SlotMonitor(
             notify(lastError, "ZłapEgzamin – sesja wygasła")
         }
         onUpdate()
+    }
+
+    /**
+     * Run a session heartbeat from the native main thread. The foreground service
+     * calls this even when Android throttles JavaScript timers after Home/lock.
+     * A successful callback proves only that JS ran, not that the server extended
+     * the login; actual authentication is verified by the refresh response.
+     */
+    fun pulseFromForegroundService(): Boolean {
+        if (destroyed || !enabled || !supported || sessionExpired ||
+            !requestReady || !isPortal(web.url)) return false
+        web.evaluateJavascript(
+            "Boolean(window.__zlapSessionTick && window.__zlapSessionTick());"
+        ) { result ->
+            if (!destroyed && result == "true" && requestReady && !sessionExpired) {
+                prefs.edit().putLong("web_heartbeat_at", System.currentTimeMillis()).apply()
+            }
+        }
+        inspectSessionState()
+        return true
     }
 
     fun resume() {
