@@ -362,10 +362,38 @@ class DashboardActivity : Activity() {
     }
 
 
+    /** Explicit user acknowledgement after reviewing reservations on the portal. */
+    private fun reviewBookingBeforeUnlock() {
+        val style = if (darkMode) android.R.style.Theme_Material_Dialog_Alert
+            else android.R.style.Theme_Material_Light_Dialog_Alert
+        android.app.AlertDialog.Builder(this, style)
+            .setTitle("Czy sprawdzono rezerwacje w portalu?")
+            .setMessage(
+                "Autorezerwacja została zabezpieczona przed podwójnym zajęciem miejsca. " +
+                "Sprawdź w info-kierowca.pl, czy poprzednia próba utworzyła rezerwację, " +
+                "w tym rezerwacje oczekujące na opłatę.\\n\\n" +
+                "Nie odblokowuj kolejnych prób, jeżeli rezerwacja już istnieje " +
+                "albo nie znasz jej stanu. Potwierdź dopiero po osobistym sprawdzeniu."
+            )
+            .setPositiveButton("Sprawdziłem – odblokuj") { _, _ ->
+                monitor.resetBookingGuardAfterPortalReview()
+                show("settings")
+            }
+            .setNeutralButton("Otwórz portal") { _, _ -> show("portal") }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+
     private fun switchAutoReserve() {
         if (monitor.autoReserveEnabled) {
             monitor.setAutoReserve(false)
             show("settings")
+            return
+        }
+        if (monitor.bookingNeedsReview) {
+            Toast.makeText(this, "Najpierw sprawdź poprzednią rezerwację w portalu.",
+                Toast.LENGTH_LONG).show()
+            reviewBookingBeforeUnlock()
             return
         }
         if (monitor.dateFrom.isBlank() || monitor.dateTo.isBlank()) {
@@ -389,7 +417,9 @@ class DashboardActivity : Activity() {
                 if (monitor.setAutoReserve(true))
                     Toast.makeText(this, "Autorezerwacja włączona. Czekam na poprawny odczyt.", Toast.LENGTH_LONG).show()
                 else
-                    Toast.makeText(this, "Zakres dat jest nieprawidłowy (maks. 30 dni).", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this,
+                        "Nie można włączyć autorezerwacji. Sprawdź daty i poprzednie rezerwacje.",
+                        Toast.LENGTH_LONG).show()
                 show("settings")
             }
             .setNegativeButton("Anuluj", null)
@@ -482,6 +512,15 @@ class DashboardActivity : Activity() {
             "● Aktywna – aplikacja może zająć jedno pasujące miejsce"
             else "○ Wyłączona", 15f, ink, true), 10)
         put(reservation, text("Ostatni stan: " + monitor.lastBookingStatus, 13f, muted), 8)
+        if (monitor.bookingNeedsReview) {
+            put(reservation, text(
+                "Wymagana kontrola poprzedniej rezerwacji w portalu. " +
+                "Kolejne próby są zablokowane, aby nie zająć dwóch miejsc.",
+                13f, Color.rgb(194, 127, 54), true), 9)
+            put(reservation, action("Sprawdź poprzednią rezerwację", false) {
+                reviewBookingBeforeUnlock()
+            }, 9)
+        }
         if (monitor.lastBookingDate.isNotBlank()) {
             put(reservation, text("Termin: " + monitor.lastBookingDate.replace('T', ' ').take(16),
                 13f, muted), 8)
@@ -764,6 +803,15 @@ class DashboardActivity : Activity() {
         put(booking, text(if (monitor.autoReserveEnabled) "● WŁĄCZONA" else "○ WYŁĄCZONA",
             17f, if (monitor.autoReserveEnabled) green else muted, true), 9)
         put(booking, text("Status: " + monitor.lastBookingStatus, 13f, muted), 8)
+        if (monitor.bookingNeedsReview) {
+            put(booking, text(
+                "OCHRONA PRZED PODWÓJNĄ REZERWACJĄ: przed kolejną próbą " +
+                "sprawdź stan istniejącego zgłoszenia w portalu.",
+                13f, Color.rgb(194, 127, 54), true), 10)
+            put(booking, action("Sprawdziłem rezerwacje – odblokuj", false) {
+                reviewBookingBeforeUnlock()
+            }, 9)
+        }
         if (monitor.lastReservationId.isNotBlank()) {
             put(booking, text("ID rezerwacji: " + monitor.lastReservationId,
                 12f, muted), 11)
@@ -948,7 +996,8 @@ class DashboardActivity : Activity() {
         put(guide, text("1. Przejdź do Portal i zaloguj się.\n"+
             "2. Wybierz MORD Kraków, kategorię B i egzamin praktyczny.\n"+
             "3. Otwórz na portalu listę dostępnych terminów.\n"+
-            "4. Możesz wrócić do Start — aplikacja sprawdza terminy zgodnie z ustawionym interwałem, gdy jest otwarta.\n\n"+
+            "4. Możesz wrócić do Start albo zminimalizować aplikację; " +
+            "usługa może wykonywać odczyty i autorezerwację, gdy WebView nadal działa.\n\n"+
             "Gdy sesja wygaśnie, konieczne będzie ponowne zalogowanie. "+
             "Po zminimalizowaniu monitor może działać z powiadomieniem, ale po zamknięciu procesu wymaga ponownego uruchomienia.", 14f, muted))
         put(page, guide, 18)
