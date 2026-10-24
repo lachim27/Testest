@@ -556,10 +556,17 @@ class SlotMonitor(
                 }
                 "booking_pending" -> {
                     val id = message.optString("reservationId").take(90)
-                    prefs.edit().putString("booking_id", id)
-                        .putString("booking_status", "Utworzona – trwa potwierdzanie")
-                        .apply()
-                    diagnostics = "Utworzono rezerwację, sprawdzam czy miejsce zostało zablokowane."
+                    if (bookingInFlight &&
+                        Regex("^[A-Za-z0-9_-]{1,90}$").matches(id) &&
+                        bookingPhase == "creating") {
+                        // The server may already hold this place. Persist the
+                        // identifier synchronously before reading confirmation.
+                        prefs.edit().putString("booking_id", id)
+                            .putString("booking_phase", "pending")
+                            .putString("booking_status", "Utworzona – trwa potwierdzanie")
+                            .commit()
+                        diagnostics = "Utworzono rezerwację, sprawdzam czy miejsce zostało zablokowane."
+                    }
                 }
                 "booking_success" -> bookingSucceeded(message)
                 "booking_failed" -> bookingFailed(message)
@@ -663,7 +670,8 @@ class SlotMonitor(
     }
 
     private fun attemptBooking(available: Map<String, String>) {
-        if (!autoReserveEnabled || bookingInFlight || !requestReady || sessionExpired ||
+        if (!autoReserveEnabled || bookingInFlight || bookingNeedsReview ||
+            !requestReady || sessionExpired ||
             !isPortal(web.url) || System.currentTimeMillis() < blockedUntil) return
         val now = System.currentTimeMillis()
         val lastKey = prefs.getString("last_booking_key", "") ?: ""
@@ -718,7 +726,9 @@ class SlotMonitor(
             if (result != "true") {
                 bookingInFlight = false
                 val info = "Portal nie rozpoczął rezerwacji. Sprawdź sesję i zgodność terminu."
-                prefs.edit().putString("booking_status", info).apply()
+                // The hook explicitly refused to start, so no remote POST was sent.
+                prefs.edit().putString("booking_phase", "idle")
+                    .putString("booking_status", info).apply()
                 diagnostics = info
                 event("Nie udało się rozpocząć autorezerwacji")
                 onUpdate()
@@ -729,50 +739,90 @@ class SlotMonitor(
         }
     }
 
+    private fun flagUncertainBooking(reason: String, id: String, date: String) {
+        bookingInFlight = false
+        val safeId = id.take(90).takeIf { Regex("^[A-Za-z0-9_-]{1,90}$").matches(it) }
+            ?: prefs.getString("booking_id", "").orEmpty()
+        prefs.edit().putBoolean("auto_reserve", false)
+            .putString("booking_phase", "uncertain")
+            .putString("booking_status", "NIEPOTWIERDZONA: " + reason.take(160))
+            .putString("booking_date", date.take(32))
+            .putString("booking_id", safeId)
+            .commit()
+        diagnostics = "Rezerwacja wymaga ręcznej weryfikacji w portalu."
+        event("Niepewna rezerwacja – wstrzymano autorezerwację")
+        val body = "Nie można potwierdzić wyniku rezerwacji " +
+            date.replace('T', ' ').take(16) +
+            ". Autorezerwacja wstrzymana, aby uniknąć podwójnej rezerwacji. " +
+            "Sprawdź rezerwacje w info-kierowca.pl" +
+            (if (safeId.isNotBlank()) " (ID: " + safeId + "). " else ". ") +
+            reason.take(140)
+        notify(body, "ZłapEgzamin – sprawdź rezerwację")
+        sendTelegram("ZłapEgzamin: " + body)
+        onUpdate()
+    }
+
     private fun bookingSucceeded(message: JSONObject) {
-        if (!bookingInFlight) return
         val reservationId = message.optString("reservationId").take(90)
         val date = message.optString("date").take(32)
-        if (!Regex("^[A-Za-z0-9_-]{1,90}$").matches(reservationId)) return
+        if (!Regex("^[A-Za-z0-9_-]{1,90}$").matches(reservationId) ||
+            date != lastBookingDate || bookingPhase == "confirmed" ||
+            (bookingPhase !in setOf("creating", "pending", "uncertain") &&
+                !bookingInFlight)) return
+        val existingId = prefs.getString("booking_id", "").orEmpty()
+        if (existingId.isNotBlank() && existingId != reservationId) return
+        // A delayed confirmation may arrive AFTER the native 2-minute
+        // watchdog. Accept only the same known candidate and reservation.
         bookingInFlight = false
         val now = System.currentTimeMillis()
         prefs.edit().putBoolean("auto_reserve", false)
             .putBoolean("enabled", false)
+            .putString("booking_phase", "confirmed")
             .putString("booking_id", reservationId)
             .putString("booking_date", date)
             .putString("booking_status", "Miejsce zarezerwowane – opłać w portalu")
             .putLong("booking_confirmed_at", now)
-            .apply()
+            .commit()
         val body = "Zajęto termin MORD Kraków, B: " + date.replace('T',' ').take(16) +
             ". Miejsce jest tymczasowo zarezerwowane. Zaloguj się i opłać " +
-            "w ciągu ok. 30 minut. ID: " + reservationId
+            "zgodnie z terminem podanym przez portal. ID: " + reservationId
         diagnostics = "Serwer potwierdził " + message.optString("status") + "."
         event("Zajęto miejsce, ID " + reservationId.take(16))
         notify(body, "ZłapEgzamin – zarezerwowano miejsce!")
         sendTelegram("ZłapEgzamin: " + body)
         activity.stopService(Intent(activity, MonitorForegroundService::class.java))
+        onUpdate()
     }
 
     private fun bookingFailed(message: JSONObject) {
-        if (!bookingInFlight) return
+        if (!bookingInFlight || bookingPhase !in setOf("creating", "pending")) return
         bookingInFlight = false
         val id = message.optString("reservationId").take(90)
         val date = message.optString("date").take(32)
+        if (date != lastBookingDate) return
         val reason = message.optString("reason").take(180)
-        val change = prefs.edit().putString("booking_status", "Niepotwierdzona: " + reason)
-            .putString("booking_date", date).putString("booking_id", id)
-        // A server reservation ID can already represent a pending hold. Never
-        // attempt another booking until the user manually verifies that state.
-        if (id.isNotBlank()) change.putBoolean("auto_reserve", false)
-        change.apply()
-        diagnostics = "Nie udało się potwierdzić zajęcia miejsca. " + reason
-        event("Nieudana autorezerwacja: " + reason)
-        val body = "Próba rezerwacji " + date.replace('T', ' ').take(16) +
-            " nie została potwierdzona. Sprawdź portal" +
-            if (id.isNotBlank()) " (automatyczne próby wstrzymane). " + reason
-            else ". " + reason
-        notify(body, "ZłapEgzamin – sprawdź rezerwację")
+        val uncertain = message.optBoolean("uncertain", false) || id.isNotBlank() ||
+            bookingPhase == "pending"
+        if (uncertain) {
+            flagUncertainBooking(reason, id, date)
+            return
+        }
+        // Definitive gateway rejection before a reservation was created.
+        // Keep auto-reservation enabled but avoid retrying the same candidate
+        // for 45 min; try another fresh candidate at a later read.
+        prefs.edit().putString("booking_phase", "idle")
+            .putString("booking_status", "Odrzucono próbę: " + reason)
+            .putString("booking_date", date)
+            .remove("booking_id")
+            .apply()
+        diagnostics = "Nie udało się zarezerwować: " + reason
+        event("Odrzucono próbę rezerwacji: " + reason)
+        val body = "Rezerwacja " + date.replace('T', ' ').take(16) +
+            " nie powiodła się: " + reason +
+            ". Aplikacja spróbuje przy kolejnym poprawnym odczycie."
+        notify(body, "ZłapEgzamin – nieudana próba rezerwacji")
         sendTelegram("ZłapEgzamin: " + body)
+        onUpdate()
     }
 
     fun configureTelegram(token: String, chatId: String) {
