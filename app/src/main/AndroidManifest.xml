@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application android:icon="@drawable/ic_zlapegzamin" android:label="ZłapEgzamin" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
         <service android:name=".MonitorForegroundService" android:exported="false" android:foregroundServiceType="dataSync" android:stopWithTask="false"/>
         <activity android:name=".DashboardActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
