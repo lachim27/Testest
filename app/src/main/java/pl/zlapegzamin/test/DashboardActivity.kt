@@ -859,6 +859,17 @@ class DashboardActivity : Activity() {
         else "jeszcze niepotwierdzone"
         put(sessionCard, text("Ostatnie potwierdzone odnowienie JWT: " +
             refreshInfo, 13f, muted), 8)
+        val serviceAt = monitor.lastBackgroundSchedulerAt
+        put(sessionCard, text(
+            "Ostatnie wywołanie harmonogramu przez usługę w tle: " +
+            (if (serviceAt > 0L)
+                SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL"))
+                    .format(java.util.Date(serviceAt))
+             else "brak"), 12f, muted), 9)
+        put(sessionCard, text(
+            "Wywołanie harmonogramu nie oznacza automatycznie, że portal " +
+            "zwrócił terminy; ostatni udany odczyt jest pokazany na Panelu.",
+            12f, muted), 8)
         if (monitor.lastBackgroundRefreshStatus.isNotBlank()) {
             put(sessionCard, text("Stan odnawiania: " +
                 monitor.lastBackgroundRefreshStatus, 13f, muted), 8)
