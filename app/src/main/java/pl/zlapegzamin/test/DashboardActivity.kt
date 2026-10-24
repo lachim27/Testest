@@ -106,6 +106,7 @@ class DashboardActivity : Activity() {
         window.decorView.systemUiVisibility =
             if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         appRoot.setBackgroundColor(bg)
+        pages.setBackgroundColor(bg)
         headerBar.setBackgroundColor(cardBg)
         headerBar.removeAllViews()
         val brand = column()
@@ -186,7 +187,10 @@ class DashboardActivity : Activity() {
 
         val body = FrameLayout(this)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
-        pages = FrameLayout(this)
+        pages = FrameLayout(this).apply {
+            setBackgroundColor(bg)
+            isClickable = true
+        }
         body.addView(pages, FrameLayout.LayoutParams(-1, -1))
 
         browserPane = column()
@@ -266,8 +270,12 @@ class DashboardActivity : Activity() {
     private fun show(which: String) {
         tab = which
         pages.removeAllViews()
-        browserPane.visibility = if (which == "portal") View.VISIBLE else View.INVISIBLE
+        // Keep WebView in VISIBLE state even behind the opaque dashboard.
+        // Android may throttle JS in an INVISIBLE WebView before the portal
+        // exposes its session-extension prompt.
+        browserPane.visibility = View.VISIBLE
         pages.visibility = if (which == "portal") View.GONE else View.VISIBLE
+        if (which == "portal") browserPane.bringToFront() else pages.bringToFront()
         when (which) {
             "settings" -> settingsPage()
             "slots" -> slotsPage()
