@@ -98,8 +98,52 @@ class SlotMonitor(
     val lastBookingDate: String get() = prefs.getString("booking_date", "") ?: ""
     val lastReservationId: String get() = prefs.getString("booking_id", "") ?: ""
     private var bookingInFlight = false
+    val bookingPhase: String get() = prefs.getString("booking_phase", "idle").orEmpty()
+    val bookingNeedsReview: Boolean
+        get() = bookingPhase in setOf("creating", "pending", "uncertain", "confirmed")
+
+    init {
+        // A process/Activity death during the POST cannot tell us whether the
+        // server already created a reservation. Never retry it automatically.
+        val phase = bookingPhase
+        val priorId = prefs.getString("booking_id", "").orEmpty()
+        val previousSuccess = prefs.getLong("booking_confirmed_at", 0L) > 0L
+        when {
+            previousSuccess && phase == "idle" -> {
+                prefs.edit().putString("booking_phase", "confirmed")
+                    .putBoolean("auto_reserve", false).apply()
+            }
+            phase == "creating" || phase == "pending" ||
+                (phase == "idle" && priorId.isNotBlank()) -> {
+                prefs.edit()
+                    .putString("booking_phase", "uncertain")
+                    .putString("booking_status",
+                        "Niepewny stan rezerwacji po wznowieniu aplikacji. Sprawdź w portalu.")
+                    .putBoolean("auto_reserve", false)
+                    .putBoolean("booking_needs_attention", true).apply()
+            }
+        }
+    }
+
+    /** User can unlock additional attempts only after reviewing the official portal. */
+    fun resetBookingGuardAfterPortalReview() {
+        if (bookingInFlight) return
+        prefs.edit()
+            .putString("booking_phase", "idle")
+            .putBoolean("auto_reserve", false)
+            .putLong("booking_confirmed_at", 0L)
+            .putString("booking_status", "Stan rezerwacji sprawdzony ręcznie w portalu")
+            .remove("last_booking_key")
+            .remove("last_booking_attempt_at")
+            .remove("booking_needs_attention")
+            .apply()
+        event("Ręcznie potwierdzono sprawdzenie stanu rezerwacji w portalu")
+        onUpdate()
+    }
+
     fun setAutoReserve(value: Boolean): Boolean {
         if (value) {
+            if (bookingNeedsReview || bookingInFlight) return false
             if (dateFrom.isBlank() || dateTo.isBlank() || dateFrom > dateTo) return false
             try {
                 val from = java.time.LocalDate.parse(dateFrom)
@@ -232,6 +276,14 @@ class SlotMonitor(
         manager.createNotificationChannel(
             NotificationChannel("session_alerts", "Sesja i problemy monitorowania", NotificationManager.IMPORTANCE_HIGH)
         )
+        if (prefs.getBoolean("booking_needs_attention", false)) {
+            prefs.edit().putBoolean("booking_needs_attention", false).apply()
+            val msg = "Nie znamy wyniku poprzedniej próby rezerwacji. Otwórz " +
+                "info-kierowca.pl i sprawdź, czy miejsce jest już zajęte. " +
+                "Autorezerwacja jest wstrzymana."
+            notify(msg, "ZłapEgzamin – sprawdź rezerwację")
+            sendTelegram("ZłapEgzamin: " + msg)
+        }
 
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -630,12 +682,35 @@ class SlotMonitor(
             return
         }
         bookingInFlight = true
-        prefs.edit().putString("last_booking_key", candidate.key)
+        // Durable write BEFORE submitting the real create operation.
+        // After a process death this becomes an uncertain hold, not a retry.
+        val recorded = prefs.edit().putString("last_booking_key", candidate.key)
             .putLong("last_booking_attempt_at", now)
-            .putString("booking_status", "Trwa próba zarezerwowania")
+            .putString("booking_phase", "creating")
+            .putString("booking_status", "Rozpoczęto tworzenie rezerwacji")
             .putString("booking_date", date)
             .remove("booking_id")
-            .apply()
+            .commit()
+        if (!recorded) {
+            bookingInFlight = false
+            diagnostics = "Nie zapisano bezpiecznie stanu rezerwacji – pomijam próbę."
+            event(diagnostics)
+            onUpdate()
+            return
+        }
+        val startedAt = now
+        handler.postDelayed({
+            if (!destroyed && bookingInFlight &&
+                prefs.getLong("last_booking_attempt_at", 0L) == startedAt &&
+                bookingPhase in setOf("creating", "pending")) {
+                bookingInFlight = false
+                flagUncertainBooking(
+                    "Upłynęły 2 minuty bez potwierdzenia zakończenia rezerwacji.",
+                    prefs.getString("booking_id", "").orEmpty(),
+                    date
+                )
+            }
+        }, 120_000L)
         web.evaluateJavascript(
             "Boolean(window.__zlapBook && window.__zlapBook(" +
                 JSONObject.quote(practiceId) + "," + JSONObject.quote(date) + "));"
