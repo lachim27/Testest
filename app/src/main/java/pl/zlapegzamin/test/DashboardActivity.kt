@@ -366,14 +366,19 @@ class DashboardActivity : Activity() {
         val status = card()
         put(status, text("AUTOMATYCZNE SPRAWDZANIE", 12f, muted, true), 12)
         val now = System.currentTimeMillis()
+        val overdue = monitor.nextPlannedAutoAt > 0L &&
+            now - monitor.nextPlannedAutoAt > 60_000L &&
+            monitor.nextCheckAt <= now &&
+            monitor.requestReady && !monitor.sessionExpired
         val connected = monitor.enabled && !monitor.sessionExpired &&
             monitor.requestReady && monitor.lastCheckedAt > 0L &&
-            monitor.blockedUntil <= now
+            monitor.blockedUntil <= now && !overdue
         val stateLabel = when {
             !monitor.enabled -> "●  Monitor wyłączony"
             monitor.sessionExpired -> "●  WYLOGOWANO — zaloguj się ponownie"
             monitor.blockedUntil > now -> "●  Limit HTTP 429"
             monitor.requestReady && monitor.lastCheckedAt == 0L -> "●  Czekam na pierwszy odczyt"
+            overdue -> "●  Opóźniony odczyt automatyczny"
             connected -> "●  Odczyt terminów działa"
             else -> "●  Otwórz portal i wybierz egzamin"
         }
@@ -385,14 +390,33 @@ class DashboardActivity : Activity() {
                 "Sprawdź komunikaty w Opcjach → Diagnostyka.", 13f, muted), 10)
         }
         put(status, text("Zapytania w ciągu godziny: " + monitor.searchesThisHour + "/4", 14f, ink, true), 5)
-        val timeFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL"))
-        put(status, text("Planowane automatyczne sprawdzenie: " +
-            timeFormat.format(java.util.Date(monitor.nextPlannedAutoAt)), 13f, ink, true), 7)
-        if (monitor.nextCheckAt > monitor.nextPlannedAutoAt + 30_000L) {
-            put(status, text("Opóźnienie ze względu na limit portalu – możliwa próba: " +
-                timeFormat.format(java.util.Date(monitor.nextCheckAt)), 13f, muted), 12)
+        val timeFormat = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL"))
+        val planned = monitor.nextPlannedAutoAt
+        val plannedLabel = when {
+            planned == 0L -> "Gotowy na pierwszy automatyczny odczyt"
+            planned <= now -> "Automatyczny odczyt zaplanowany na " +
+                timeFormat.format(java.util.Date(planned)) + " — termin już minął"
+            else -> "Następny automatyczny odczyt: " +
+                timeFormat.format(java.util.Date(planned))
+        }
+        put(status, text(plannedLabel, 13f, ink, true), 7)
+        if (monitor.nextCheckAt > now + 3_000L) {
+            val reason = when {
+                monitor.blockedUntil > now -> "HTTP 429"
+                monitor.searchesThisHour >= 4 -> "limit 4 zapytań na godzinę"
+                else -> "krótka przerwa techniczna"
+            }
+            put(status, text("Odczyt przesunięty ($reason). Najwcześniej: " +
+                timeFormat.format(java.util.Date(monitor.nextCheckAt)), 13f, muted), 9)
+        } else if (overdue) {
+            put(status, text("Termin minął, ale nie potwierdzono rozpoczęcia odczytu. " +
+                "Sprawdź diagnostykę i czy WebView nadal działa.", 13f, Color.rgb(178, 90, 35), true), 9)
         } else {
-            put(status, text("Godzina ręcznego odczytu nie resetuje automatu.", 12f, muted), 12)
+            put(status, text("Ręczne sprawdzenie nie przesuwa automatycznego harmonogramu.", 12f, muted), 9)
+        }
+        if (monitor.lastAutoIssue.isNotBlank()) {
+            put(status, text("Ostatni problem automatu: " + monitor.lastAutoIssue,
+                13f, Color.rgb(178, 90, 35)), 12)
         }
         put(status, action(if (monitor.enabled) "Wstrzymaj monitorowanie" else "Włącz monitorowanie") {
             monitor.setEnabled(!monitor.enabled)
