@@ -135,7 +135,14 @@
         try { requestBody = input.clone().text(); } catch (_) {}
       }
       if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; send({kind:'request', source:'portal'}); }
-      return fetchOriginal.apply(this, arguments).then(function (res) {
+      var portalFetch;
+      try {
+        portalFetch = fetchOriginal.apply(this, arguments);
+      } catch (err) {
+        if (isTarget(url)) requestInFlight = false;
+        throw err;
+      }
+      return portalFetch.then(function (res) {
         if (isTarget(url)) requestInFlight = false;
         if (hadAuthenticatedRequest && /\/jwt\/refresh/i.test(String(url))) {
           if (res.status === 401 || res.status === 403) {
@@ -159,6 +166,14 @@
           }).catch(function () {});
         }
         return res;
+      }, function (err) {
+        // A rejected portal fetch must not leave the monitor permanently
+        // believing an HTTP request is still in progress.
+        if (isTarget(url)) {
+          requestInFlight = false;
+          send({kind:'network', reason:'portal'});
+        }
+        throw err;
       });
     };
   }
@@ -192,7 +207,12 @@
       send({kind:'request', source:'portal'});
       this.addEventListener('loadend', function () { requestInFlight = false; }, {once:true});
     }
-    return sendOriginal.apply(this, arguments);
+    try {
+      return sendOriginal.apply(this, arguments);
+    } catch (err) {
+      if (isTarget(this.__zlapURL)) requestInFlight = false;
+      throw err;
+    }
   };
   // Extend the user's session via the portal's OWN visible control.
   // No undocumented authentication endpoint or identity-provider bypass.
