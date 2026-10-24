@@ -42,7 +42,9 @@ jobs:
           gradle-version: '8.13'
 
       - name: Validate portal script
-        run: node --check app/src/main/assets/slot-hook.js
+        run: |
+          node --check app/src/main/assets/slot-hook.js
+          node --test tests/booking-safety.test.js
 
       - name: Build APK
         run: gradle assembleDebug --no-daemon
