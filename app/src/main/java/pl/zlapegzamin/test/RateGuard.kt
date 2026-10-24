@@ -43,7 +43,27 @@ class RateGuard(context: Context) {
     val strikes: Int get() = prefs.getInt("strikes", 0)
     val lastAutomaticRequestAt: Long get() = prefs.getLong("last_automatic_request", 0L)
 
+    /** Real requests in the trailing 60 minutes, including portal and manual searches. */
     fun usedInHour(): Int = requests(System.currentTimeMillis()).size
+
+    /** Timestamp when the oldest currently counted request leaves the rolling window. */
+    fun nextCountDecreaseAt(): Long {
+        val entries = requests(System.currentTimeMillis())
+        return if (entries.isEmpty()) 0L else entries.first() + hour
+    }
+
+    /** Timestamp after which no currently counted request remains in the window. */
+    fun allCountedRequestsExpireAt(): Long {
+        val entries = requests(System.currentTimeMillis())
+        return if (entries.isEmpty()) 0L else entries.last() + hour
+    }
+
+    /** Time when the local 4-per-hour budget will permit another automatic request. */
+    fun nextQuotaSlotAt(): Long {
+        val entries = requests(System.currentTimeMillis())
+        return if (entries.size < maxRequestsPerHour) 0L
+            else entries[entries.size - maxRequestsPerHour] + hour + safety
+    }
 
     /**
      * All real searches count towards the shared hourly quota. Only real
