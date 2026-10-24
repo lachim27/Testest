@@ -158,7 +158,8 @@ class SlotMonitor(
                 notify(warning, "ZłapEgzamin – monitor wymaga uwagi")
                 sendTelegram("ZłapEgzamin: " + warning)
             }
-            if (enabled && supported && requestReady && now >= blockedUntil &&
+            if (enabled && supported && requestReady && !sessionExpired &&
+                now >= blockedUntil &&
                 now >= nextAllowed() && !requestPending && isPortal(web.url)) {
                 requestPending = true
                 lastAttemptAt = now
@@ -461,7 +462,9 @@ class SlotMonitor(
                         .putLong("authenticated_at", lastReadyAt)
                         .putLong("web_heartbeat_at", lastReadyAt)
                         .putLong("verified_portal_at", lastReadyAt)
-                        .putBoolean("session_expired", false).apply()
+                        .putBoolean("session_expired", false)
+                        .putInt("native_refresh_failures", 0)
+                        .putBoolean("native_refresh_issue_alerted", false).apply()
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
                     lastError = ""
