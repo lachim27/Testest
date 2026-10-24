@@ -158,25 +158,42 @@ class SlotMonitor(
                 notify(warning, "ZłapEgzamin – monitor wymaga uwagi")
                 sendTelegram("ZłapEgzamin: " + warning)
             }
-            if (enabled && supported && requestReady && !sessionExpired &&
-                now >= blockedUntil &&
-                now >= nextAllowed() && !requestPending && isPortal(web.url)) {
-                requestPending = true
-                lastAttemptAt = now
-                web.evaluateJavascript(
-                    """(function() {
-                      if (!window.__zlapCheckNow) return 'missing_hook';
-                      return window.__zlapCheckNow() ? 'started' :
-                        String(window.__zlapLastCheckReason || 'unknown');
-                    })();"""
-                ) { result ->
-                    if (result != "\"started\"") {
-                        autoCheckDidNotStart(result?.removeSurrounding("\"").orEmpty())
-                    }
-                }
-            }
+            checkAutomaticDue()
             handler.postDelayed(this, 15_000L)
         }
+    }
+
+    /**
+     * Shared, rate-guarded automatic scheduler used both by the foreground
+     * Activity and by its already-running foreground service. It NEVER starts
+     * another search when one is pending, or when HTTP 429/hourly limits apply.
+     * Calling it from the service makes polling resilient to Activity callback
+     * throttling, as long as the authenticated WebView still exists.
+     */
+    fun checkAutomaticDue(): Boolean {
+        if (destroyed || !enabled || !supported || !requestReady ||
+            sessionExpired || !isPortal(web.url)) return false
+        val now = System.currentTimeMillis()
+        if (requestPending && now - lastAttemptAt >= 90_000L) {
+            requestPending = false
+            diagnostics = "Odczyt przekroczył 90 sekund; sprawdzam gotowość portalu."
+        }
+        if (bookingInFlight || now < blockedUntil || now < nextAllowed() ||
+            requestPending) return false
+        requestPending = true
+        lastAttemptAt = now
+        web.evaluateJavascript(
+            """(function() {
+              if (!window.__zlapCheckNow) return 'missing_hook';
+              return window.__zlapCheckNow() ? 'started' :
+                String(window.__zlapLastCheckReason || 'unknown');
+            })();"""
+        ) { result ->
+            if (!destroyed && result != "\"started\"") {
+                autoCheckDidNotStart(result?.removeSurrounding("\"").orEmpty())
+            }
+        }
+        return true
     }
 
     private fun autoCheckDidNotStart(reason: String) {
