@@ -170,6 +170,8 @@ class SlotMonitor(
     val lastAutoIssue: String get() = prefs.getString("last_auto_issue", "").orEmpty()
     val lastAutoIssueAt: Long get() = prefs.getLong("last_auto_issue_at", 0L)
     val lastBackgroundRefreshAt: Long get() = prefs.getLong("native_refresh_ok_at", 0L)
+    val lastBackgroundSchedulerAt: Long
+        get() = prefs.getLong("background_poll_scheduler_at", 0L)
     val lastBackgroundRefreshStatus: String get() =
         prefs.getString("native_refresh_status", "").orEmpty()
     val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
