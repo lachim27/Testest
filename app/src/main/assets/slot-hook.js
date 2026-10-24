@@ -317,25 +317,50 @@
     observeSessionDialog();
   }
   window.setInterval(window.__zlapSessionTick, 3000);
+  // Report why an automatic search could not start, instead of silently
+  // leaving the planned time in the past. This never increases request volume.
+  window.__zlapLastCheckReason = '';
   window.__zlapCheckNow = function (mode) {
-    if (!saved || running || requestInFlight || Date.now() < cooldownUntil ||
-        (mode !== 'manual' && Date.now() - lastRequest < 15000)) return false;
+    var reason = !saved ? 'missing_request' :
+      running ? 'previous_check_running' :
+      requestInFlight ? 'portal_request_running' :
+      Date.now() < cooldownUntil ? 'cooldown_429' :
+      (mode !== 'manual' && Date.now() - lastRequest < 15000) ? 'portal_recent_request' : '';
+    window.__zlapLastCheckReason = reason;
+    if (reason) return false;
+
+    var controller = new AbortController();
+    var timeout = 0;
+    var operation;
     running = true;
     lastRequest = Date.now();
+    try {
+      operation = fetchOriginal.call(window, saved.url, {
+        method: 'POST',
+        body: saved.body,
+        headers: saved.headers || {'Content-Type': 'application/json'},
+        credentials: saved.credentials || 'same-origin',
+        cache: 'no-store',
+        signal: controller.signal
+      });
+    } catch (_) {
+      running = false;
+      window.__zlapLastCheckReason = 'request_start_failed';
+      send({kind:'network', reason:'start'});
+      return false;
+    }
     send({kind:'request', source: mode === 'manual' ? 'manual' : 'automatic'});
-    fetchOriginal.call(window, saved.url, {
-      method: 'POST',
-      body: saved.body,
-      headers: saved.headers || {'Content-Type': 'application/json'},
-      credentials: saved.credentials || 'same-origin',
-      cache: 'no-store'
-    }).then(function (res) {
+    timeout = window.setTimeout(function () { controller.abort(); }, 45000);
+    Promise.resolve(operation).then(function (res) {
       return res.text().then(function (txt) {
         process(saved.url, res.status, txt, res.headers.get('Retry-After'));
       });
-    }).catch(function () {
-      send({kind:'network'});
-    }).then(function () { running = false; });
+    }).catch(function (err) {
+      send({kind:'network', reason:err && err.name === 'AbortError' ? 'timeout' : 'connection'});
+    }).then(function () {
+      window.clearTimeout(timeout);
+      running = false;
+    });
     return true;
   };
 
