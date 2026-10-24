@@ -385,6 +385,7 @@ class SlotMonitor(
                     prefs.edit()
                         .putLong("authenticated_at", lastReadyAt)
                         .putLong("web_heartbeat_at", lastReadyAt)
+                        .putLong("verified_portal_at", lastReadyAt)
                         .putBoolean("session_expired", false).apply()
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
@@ -392,6 +393,13 @@ class SlotMonitor(
                     diagnostics = "Zidentyfikowano zapytanie MORD Kraków, B. Oczekiwanie na odpowiedź."
                 }
                 "terms" -> consume(message)
+                "auth_alive" -> {
+                    if (requestReady && !sessionExpired) {
+                        prefs.edit().putLong("verified_portal_at",
+                            System.currentTimeMillis()).apply()
+                        diagnostics = "Portal potwierdził odnowienie uwierzytelnienia."
+                    }
+                }
                 "booking_started" -> {
                     bookingInFlight = true
                     diagnostics = "Próba zajęcia terminu: " + message.optString("date").take(24)
@@ -472,7 +480,9 @@ class SlotMonitor(
         earliest = sorted.firstOrNull()?.replace('T', ' ')?.take(16) ?: ""
         slotCount = current.size
         lastCheckedAt = System.currentTimeMillis()
-        prefs.edit().putBoolean("session_expired", false).apply()
+        prefs.edit()
+            .putBoolean("session_expired", false)
+            .putLong("verified_portal_at", lastCheckedAt).apply()
         rateGuard.resetAfterLongSuccess()
         sessionAlertSent = false
         prefs.edit().putBoolean("session_alert_sent", false).apply()
