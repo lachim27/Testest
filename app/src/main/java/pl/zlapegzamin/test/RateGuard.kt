@@ -41,6 +41,7 @@ class RateGuard(context: Context) {
 
     val blockedUntil: Long get() = prefs.getLong("blocked_until", 0L)
     val strikes: Int get() = prefs.getInt("strikes", 0)
+    val lastAutomaticRequestAt: Long get() = prefs.getLong("last_automatic_request", 0L)
 
     fun usedInHour(): Int = requests(System.currentTimeMillis()).size
 
