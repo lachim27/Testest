@@ -62,7 +62,21 @@ class MonitorForegroundService : Service() {
                 prefs.getBoolean("session_expired", false)) return
             val authenticatedAt = prefs.getLong("authenticated_at", 0L)
             val lastBeat = prefs.getLong("web_heartbeat_at", 0L)
+            val verifiedAt = prefs.getLong("verified_portal_at", 0L)
             val now = System.currentTimeMillis()
+            // The JS heartbeat only confirms that WebView is running. It does
+            // NOT prove that the portal has extended the server-side session.
+            val lastPortalEvidence = maxOf(authenticatedAt, verifiedAt)
+            if (lastPortalEvidence > 0L && now >= lastPortalEvidence &&
+                now - lastPortalEvidence in (7 * minute)..(48 * 60 * minute) &&
+                prefs.getLong("risk_notified_for", 0L) != lastPortalEvidence) {
+                prefs.edit().putLong("risk_notified_for", lastPortalEvidence).apply()
+                val risk = "Od ponad 7 minut nie ma potwierdzenia aktywnej sesji portalu. " +
+                    "Info-kierowca może wylogować po około 10 minutach bezczynności. " +
+                    "Otwórz Portal i sprawdź logowanie."
+                showSessionWarning(risk)
+                sendTelegram("ZłapEgzamin: " + risk)
+            }
             if (authenticatedAt <= 0L || lastBeat <= 0L ||
                 lastBeat < authenticatedAt || now < lastBeat ||
                 now - authenticatedAt > 48 * 60 * minute) return
