@@ -21,5 +21,9 @@ internal object PortalMonitorBridge {
 
     fun pulse(): Boolean = current?.get()?.pulseFromForegroundService() ?: false
 
+    /** Evaluate the *same* guarded scheduler as the Activity, never a second,
+     * independent one. Called only from the service main-thread handler. */
+    fun pollIfDue(): Boolean = current?.get()?.checkAutomaticDue() ?: false
+
     fun attached(): Boolean = current?.get() != null
 }
