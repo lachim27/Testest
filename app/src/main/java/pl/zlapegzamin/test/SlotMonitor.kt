@@ -107,6 +107,9 @@ class SlotMonitor(
     }
     val blockedUntil: Long get() = rateGuard.blockedUntil
     val searchesThisHour: Int get() = rateGuard.usedInHour()
+    val nextCountDecreaseAt: Long get() = rateGuard.nextCountDecreaseAt()
+    val allCountedRequestsExpireAt: Long get() = rateGuard.allCountedRequestsExpireAt()
+    val nextQuotaSlotAt: Long get() = rateGuard.nextQuotaSlotAt()
     /** Planned auto time is intentionally unaffected by manual search requests. */
     val nextPlannedAutoAt: Long get() = rateGuard.nextScheduledAutomatic(effectiveSeconds)
     val lastAutomaticRequestAt: Long get() = rateGuard.lastAutomaticRequestAt
@@ -392,7 +395,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. " +
+                ". Zapytania z ostatnich 60 min: " + searchesThisHour + " (próg automatu: 4). " +
                 "Następny automat: " + (if (nextPlannedAutoAt == 0L) "gotowy do startu" else clock(nextPlannedAutoAt)) +
                 (if (nextPlannedAutoAt > 0L && nextPlannedAutoAt <= now)
                     " (termin minął – czeka na możliwość wykonania)" else "") +
@@ -421,7 +424,7 @@ class SlotMonitor(
                     }
                     lastAttemptAt = System.currentTimeMillis()
                     diagnostics = (if (automatic) "Automatyczne" else "Ręczne lub portalowe") +
-                        " zapytanie; wykorzystano " + rateGuard.usedInHour() + "/4 próby w tej godzinie."
+                        " zapytanie. Ostatnie 60 min: " + rateGuard.usedInHour() + " (próg automatu 4)."
                 }
                 "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {
