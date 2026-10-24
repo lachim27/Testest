@@ -296,6 +296,7 @@ class DashboardActivity : Activity() {
             if (::pages.isInitialized && ::monitor.isInitialized && (tab == "start" || tab == "slots")) show(tab)
         }
         monitor.install()
+        PortalMonitorBridge.attach(monitor)
         browser.loadUrl(portal)
         if (monitor.enabled) startBackgroundMonitor()
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -776,6 +777,40 @@ class DashboardActivity : Activity() {
         })
         put(page, booking, 19)
 
+        val background = card()
+        put(background, text("PODTRZYMYWANIE SESJI W TLE", 12f, blue, true), 12)
+        put(background, text(
+            "Po zminimalizowaniu aplikacji usługa odświeża istniejące " +
+            "uwierzytelnienie portalu mniej więcej co 4 minuty i wywołuje " +
+            "jego mechanizm aktywności. Działa tylko przy włączonym monitorze " +
+            "i dopóki Android utrzymuje jego proces. Może zużywać więcej baterii.",
+            13f, muted), 12)
+        put(background, action(
+            if (monitor.backgroundSessionMaintenanceEnabled)
+                "Podtrzymywanie sesji w tle: WŁĄCZONE"
+            else "Podtrzymywanie sesji w tle: WYŁĄCZONE",
+            monitor.backgroundSessionMaintenanceEnabled
+        ) {
+            monitor.setBackgroundSessionMaintenanceEnabled(
+                !monitor.backgroundSessionMaintenanceEnabled)
+            refreshSettingsAtSamePosition()
+        }, 11)
+        val lastRefresh = monitor.lastBackgroundRefreshAt
+        val refreshInfo = if (lastRefresh > 0L)
+            SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl", "PL"))
+                .format(java.util.Date(lastRefresh))
+        else "jeszcze niepotwierdzone"
+        put(background, text("Ostatnie potwierdzone odnowienie JWT: " +
+            refreshInfo, 13f, muted), 8)
+        if (monitor.lastBackgroundRefreshStatus.isNotBlank()) {
+            put(background, text("Stan odnawiania: " +
+                monitor.lastBackgroundRefreshStatus, 13f, muted), 8)
+        }
+        put(background, text("Portal może wymagać ponownego logowania po " +
+            "upływie maksymalnego czasu sesji. Nawet przy włączonej opcji " +
+            "system Android może ograniczyć proces lub sieć.", 12f, muted))
+        put(page, background, 19)
+
         val frequency = card()
         put(frequency, text("CZĘSTOTLIWOŚĆ SPRAWDZANIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(frequency, text("Interwał bazowy: " + monitor.intervalSeconds + " s. " +
@@ -951,7 +986,14 @@ class DashboardActivity : Activity() {
     }
     override fun onResume() {
         super.onResume()
-        if (::monitor.isInitialized) monitor.resume()
+        getSharedPreferences("slot_monitor_v1", MODE_PRIVATE).edit()
+            .putBoolean("app_in_background", false)
+            .putBoolean("background_monitor_absent_alerted", false).apply()
+        if (::monitor.isInitialized) {
+            monitor.resume()
+            // React immediately when returning from Home / screen lock.
+            monitor.pulseFromForegroundService()
+        }
         if (!rateTickerEnabled) {
             rateTickerEnabled = true
             uiHandler.post(rateTicker)
@@ -962,6 +1004,9 @@ class DashboardActivity : Activity() {
         // needed while the user can see the dashboard.
         rateTickerEnabled = false
         uiHandler.removeCallbacks(rateTicker)
+        if (::monitor.isInitialized && monitor.enabled) monitor.pulseFromForegroundService()
+        getSharedPreferences("slot_monitor_v1", MODE_PRIVATE).edit()
+            .putBoolean("app_in_background", true).apply()
         super.onPause()
     }
     override fun onNewIntent(intent: Intent) {
@@ -977,7 +1022,10 @@ class DashboardActivity : Activity() {
     override fun onDestroy() {
         rateTickerEnabled = false
         uiHandler.removeCallbacks(rateTicker)
-        if (::monitor.isInitialized) monitor.destroy()
+        if (::monitor.isInitialized) {
+            PortalMonitorBridge.detach(monitor)
+            monitor.destroy()
+        }
         if (::browser.isInitialized) {
             (browser.parent as? android.view.ViewGroup)?.removeView(browser)
             browser.destroy()
