@@ -110,6 +110,8 @@ class SlotMonitor(
     /** Planned auto time is intentionally unaffected by manual search requests. */
     val nextPlannedAutoAt: Long get() = rateGuard.nextScheduledAutomatic(effectiveSeconds)
     val nextCheckAt: Long get() = nextAllowed()
+    val lastAutoIssue: String get() = prefs.getString("last_auto_issue", "").orEmpty()
+    val lastAutoIssueAt: Long get() = prefs.getLong("last_auto_issue_at", 0L)
     val recentSlots: List<String> get() = (prefs.getString("recent_slots", "") ?: "")
         .split("|").filter { it.isNotBlank() }.take(20)
     val eventHistory: List<String> get() = (prefs.getString("events", "") ?: "")
@@ -149,11 +151,47 @@ class SlotMonitor(
                 now >= nextAllowed() && !requestPending && isPortal(web.url)) {
                 requestPending = true
                 lastAttemptAt = now
-                web.evaluateJavascript("window.__zlapCheckNow && window.__zlapCheckNow();") { result ->
-                    if (result != "true") requestPending = false
+                web.evaluateJavascript(
+                    """(function() {
+                      if (!window.__zlapCheckNow) return 'missing_hook';
+                      return window.__zlapCheckNow() ? 'started' :
+                        String(window.__zlapLastCheckReason || 'unknown');
+                    })();"""
+                ) { result ->
+                    if (result != "\"started\"") {
+                        autoCheckDidNotStart(result?.removeSurrounding("\"").orEmpty())
+                    }
                 }
             }
             handler.postDelayed(this, 15_000L)
+        }
+    }
+
+    private fun autoCheckDidNotStart(reason: String) {
+        requestPending = false
+        val detail = when (reason) {
+            "missing_hook" -> "Brak skryptu monitorowania w bieżącej stronie."
+            "missing_request" -> "Strona utraciła zapamiętane zapytanie o terminy."
+            "previous_check_running" -> "Poprzedni odczyt wciąż trwa."
+            "portal_request_running" -> "Portal właśnie wysyła własne zapytanie."
+            "cooldown_429" -> "Skrypt portalu nadal odczekuje po HTTP 429."
+            "portal_recent_request" -> "Wymagany krótki odstęp od ostatniego zapytania portalu."
+            "request_start_failed" -> "Nie można było rozpocząć zapytania z WebView."
+            else -> "Nie udało się wywołać skryptu odczytu (WebView: " + reason.take(32) + ")."
+        }
+        val now = System.currentTimeMillis()
+        val previous = prefs.getString("last_auto_issue", "").orEmpty()
+        val previousAt = prefs.getLong("last_auto_issue_at", 0L)
+        if (reason == "missing_hook" || reason == "missing_request") {
+            requestReady = false
+            lastError = detail + " Otwórz ponownie listę terminów w zakładce Portal."
+        }
+        if (previous != detail || now - previousAt >= 2 * 60_000L) {
+            prefs.edit().putString("last_auto_issue", detail)
+                .putLong("last_auto_issue_at", now).apply()
+            diagnostics = "Automat: " + detail
+            event("Automat: " + detail)
+            onUpdate()
         }
     }
 
@@ -353,10 +391,11 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. Harmonogram automatu: " +
-                clock(nextPlannedAutoAt) + ". Najwcześniejszy dozwolony odczyt: " + clock(nextAllowed()) +
-                ". Interwał: " + intervalSeconds + " s, minimalny odstęp: " +
-                minimumAutoGapSeconds + " s (domyślnie 900 s)."
+                ". Wykorzystano " + searchesThisHour + "/4 zapytania/h. " +
+                "Następny automat: " + (if (nextPlannedAutoAt == 0L) "gotowy do startu" else clock(nextPlannedAutoAt)) +
+                (if (nextPlannedAutoAt > 0L && nextPlannedAutoAt <= now)
+                    " (termin minął – czeka na możliwość wykonania)" else "") +
+                ". Minimalny odstęp: " + minimumAutoGapSeconds + " s."
         }
     }
 
@@ -374,6 +413,11 @@ class SlotMonitor(
                 "request" -> {
                     val automatic = message.optString("source") == "automatic"
                     rateGuard.recordRequest(automatic = automatic)
+                    if (automatic) {
+                        prefs.edit().remove("last_auto_issue")
+                            .remove("last_auto_issue_at").apply()
+                        event("Wysłano automatyczne zapytanie do portalu")
+                    }
                     lastAttemptAt = System.currentTimeMillis()
                     diagnostics = (if (automatic) "Automatyczne" else "Ręczne lub portalowe") +
                         " zapytanie; wykorzystano " + rateGuard.usedInHour() + "/4 próby w tej godzinie."
@@ -480,6 +524,7 @@ class SlotMonitor(
         earliest = sorted.firstOrNull()?.replace('T', ' ')?.take(16) ?: ""
         slotCount = current.size
         lastCheckedAt = System.currentTimeMillis()
+        prefs.edit().remove("last_auto_issue").remove("last_auto_issue_at").apply()
         prefs.edit()
             .putBoolean("session_expired", false)
             .putLong("verified_portal_at", lastCheckedAt).apply()
