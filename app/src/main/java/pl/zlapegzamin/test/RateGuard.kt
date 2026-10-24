@@ -59,11 +59,11 @@ class RateGuard(context: Context) {
         editor.apply()
     }
 
+    /** Stable due time: never move a missed deadline forward just because the clock advances. */
     fun nextScheduledAutomatic(chosenSeconds: Int): Long {
-        val now = System.currentTimeMillis()
         val lastAuto = prefs.getLong("last_automatic_request", 0L)
-        if (lastAuto <= 0L) return now
-        return maxOf(now, lastAuto + maxOf(minSpacing, chosenSeconds * 1000L))
+        if (lastAuto <= 0L) return 0L  // Ready for the first automatic request.
+        return lastAuto + maxOf(minSpacing, chosenSeconds * 1000L)
     }
 
     fun nextAllowed(chosenSeconds: Int): Long {
