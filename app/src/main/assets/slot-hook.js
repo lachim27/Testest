@@ -384,8 +384,9 @@
     return true;
   };
 
-  // Optional temporary, unpaid reservation. Never assume a create response
-  // means that a slot has actually been held.
+  // Optional temporary hold, only after explicit Android user consent.
+  // A POST that times out can still have created a real reservation.
+  // Treat ambiguous outcomes as a reason to STOP, not to POST again.
   var zlapBookingBusy = false;
   var zlapBookingCompleted = false;
   var zlapBookingKeys = {};
@@ -398,12 +399,28 @@
     if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     return headers;
   }
-  function zlapBookingError(reason, date, reservationId) {
+  function zlapBookingError(reason, date, reservationId, uncertain) {
     send({kind:'booking_failed', reason:String(reason || 'Brak potwierdzenia').slice(0,180),
-      date:date, reservationId:reservationId || ''});
+      date:date, reservationId:reservationId || '', uncertain:!!uncertain});
   }
+  // Short network timeouts limit how long an operation can be stuck while
+  // Android throttles its WebView. A timeout never proves server rejection.
+  function zlapFetchWithTimeout(url, opts, timeoutMs) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, timeoutMs);
+    var request = Object.assign({}, opts, {signal:controller.signal});
+    return Promise.resolve().then(function () {
+      return fetchOriginal.call(window, url, request);
+    }).finally(function () {
+      clearTimeout(timeout);
+    });
+  }
+
   window.__zlapBook = function(practiceId, datetime) {
-    if (!saved || zlapBookingBusy || zlapBookingCompleted || running ||
+    // 'running' can still be true for a fraction of a second AFTER the
+    // exam-result message. It is safe to start this distinct reservation
+    // request; all other concurrency guards still apply.
+    if (!saved || zlapBookingBusy || zlapBookingCompleted ||
         requestInFlight || Date.now() < cooldownUntil) return false;
     if (!zlapSafeId(practiceId) || typeof datetime !== 'string' ||
         !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(datetime)) return false;
@@ -411,22 +428,25 @@
     if (zlapBookingKeys[key]) return false;
     var profile;
     try {
-      var request = JSON.parse(saved.body);
-      profile = String(request.profileNumber || '').trim();
+      profile = String(JSON.parse(saved.body).profileNumber || '').trim();
     } catch (_) { return false; }
     if (!/^[0-9]{8,30}$/.test(profile)) {
-      send({kind:'booking_failed', reason:'Brak poprawnego numeru PKK w sesji', date:datetime});
+      send({kind:'booking_failed', reason:'Brak poprawnego numeru PKK w sesji',
+        date:datetime, uncertain:false});
       return false;
     }
     zlapBookingBusy = true;
     zlapBookingKeys[key] = true;
     var dateOnly = datetime.slice(0, 10);
     var reservationId = '';
+    var creating = false;
+    var ambiguous = false;
     send({kind:'booking_started', date:datetime});
     (async function () {
       var base = location.origin + '/bknd/exam/api/v1/Reservations/';
       try {
-        var createResponse = await fetchOriginal.call(window, base + 'create', {
+        creating = true;
+        var createResponse = await zlapFetchWithTimeout(base + 'create', {
           method:'POST', credentials:saved.credentials || 'same-origin',
           headers:zlapBookingHeaders('application/json'),
           body:JSON.stringify({
@@ -439,63 +459,81 @@
             language:'Polish',
             category:'B'
           }), cache:'no-store'
-        });
+        }, 15000);
         if (createResponse.status === 429) {
           cooldownUntil = Date.now() + 30 * 60 * 1000;
           send({kind:'rate', retryAfter:createResponse.headers.get('Retry-After') || ''});
-          zlapBookingError('HTTP 429 – limit portalu', datetime);
+          creating = false;
+          zlapBookingError('HTTP 429 – limit portalu', datetime, '', false);
           return;
         }
         if (createResponse.status === 401 || createResponse.status === 403) {
           send({kind:'auth', status:createResponse.status});
-          zlapBookingError('Sesja wygasła – zaloguj się ponownie', datetime);
+          creating = false;
+          zlapBookingError('Sesja wygasła – zaloguj się ponownie', datetime, '', false);
           return;
         }
         if (!createResponse.ok) {
-          zlapBookingError('Tworzenie rezerwacji: HTTP ' + createResponse.status, datetime);
+          // HTTP 5xx/409 can mean the server accepted the operation but failed
+          // to return its ID. Never automatically retry such a response.
+          ambiguous = createResponse.status >= 500 || createResponse.status === 409;
+          creating = false;
+          zlapBookingError('Tworzenie rezerwacji: HTTP ' + createResponse.status,
+            datetime, '', ambiguous);
           return;
         }
-        var body = await createResponse.json();
-        reservationId = String(body && body.id || '');
+        var createBody = await createResponse.json();
+        reservationId = String(createBody && createBody.id || '');
         if (!zlapSafeId(reservationId)) {
-          zlapBookingError('Portal nie zwrócił identyfikatora rezerwacji', datetime);
+          ambiguous = true;
+          zlapBookingError('Serwer zaakceptował tworzenie, ale nie zwrócił poprawnego ID',
+            datetime, '', true);
           return;
         }
         send({kind:'booking_pending', date:datetime, reservationId:reservationId});
-        var controller = new AbortController();
-        var timeout = setTimeout(function () { controller.abort(); }, 9000);
+        // Confirm the existing ID: never send /create again to repair timeouts.
         try {
-          var confirmResponse = await fetchOriginal.call(window,
+          var confirmResponse = await zlapFetchWithTimeout(
             base + 'confirm/' + encodeURIComponent(reservationId), {
               method:'GET', credentials:saved.credentials || 'same-origin',
               headers:zlapBookingHeaders('text/event-stream'),
-              cache:'no-store', signal:controller.signal
-            });
+              cache:'no-store'
+            }, 9000);
           if (confirmResponse.body && confirmResponse.body.cancel) {
             try { await confirmResponse.body.cancel(); } catch (_) {}
           }
         } catch (_) {
-          // A streaming timeout is not proof of failure. Query state below.
-        } finally {
-          clearTimeout(timeout);
+          // A broken streaming confirmation is not proof of failure.
         }
         for (var attempt = 0; attempt < 4; attempt++) {
-          if (attempt > 0) await new Promise(function(resolve) { setTimeout(resolve, 3000); });
-          var stateResponse = await fetchOriginal.call(window,
-            base + encodeURIComponent(reservationId), {
-              method:'GET', credentials:saved.credentials || 'same-origin',
-              headers:zlapBookingHeaders('application/json'),
-              cache:'no-store'
-            });
+          if (attempt > 0) {
+            await new Promise(function (resolve) { setTimeout(resolve, 3000); });
+          }
+          var stateResponse;
+          try {
+            stateResponse = await zlapFetchWithTimeout(
+              base + encodeURIComponent(reservationId), {
+                method:'GET', credentials:saved.credentials || 'same-origin',
+                headers:zlapBookingHeaders('application/json'),
+                cache:'no-store'
+              }, 10000);
+          } catch (_) { continue; }
           if (stateResponse.status === 429) {
             send({kind:'rate', retryAfter:stateResponse.headers.get('Retry-After') || ''});
-            zlapBookingError('HTTP 429 przy sprawdzaniu stanu – sprawdź rezerwację ręcznie',
-              datetime, reservationId);
+            zlapBookingError('HTTP 429 podczas potwierdzania – sprawdź rezerwację',
+              datetime, reservationId, true);
+            return;
+          }
+          if (stateResponse.status === 401 || stateResponse.status === 403) {
+            send({kind:'auth', status:stateResponse.status});
+            zlapBookingError('Sesja wygasła podczas potwierdzania',
+              datetime, reservationId, true);
             return;
           }
           if (!stateResponse.ok) continue;
-          var statusData = await stateResponse.json();
-          var status = String(statusData && statusData.status || '');
+          var data;
+          try { data = await stateResponse.json(); } catch (_) { continue; }
+          var status = String(data && data.status || '');
           if (status === 'PlaceReserved' || status === 'Accepted') {
             zlapBookingCompleted = true;
             send({kind:'booking_success', date:datetime,
@@ -503,17 +541,20 @@
             return;
           }
           if (/^(Failed|Rejected|Cancelled|Canceled|Expired)$/i.test(status)) {
-            zlapBookingError('Portal odrzucił rezerwację: ' + status,
-              datetime, reservationId);
+            zlapBookingError('Portal wskazuje stan: ' + status,
+              datetime, reservationId, true);
             return;
           }
         }
-        zlapBookingError('Niepotwierdzony stan rezerwacji – sprawdź ją w portalu',
-          datetime, reservationId);
-      } catch (e) {
-        zlapBookingError('Błąd połączenia – sprawdź rezerwację ręcznie',
-          datetime, reservationId);
+        zlapBookingError('Stan rezerwacji nie został potwierdzony. Sprawdź portal.',
+          datetime, reservationId, true);
+      } catch (err) {
+        zlapBookingError('Błąd sieci lub przekroczony czas podczas rezerwacji',
+          datetime, reservationId, creating || ambiguous || !!reservationId);
       } finally {
+        // Only a definitive rejection *before* a reservation was created can
+        // be safely retried at a later fresh scan.
+        if (!reservationId && !creating && !ambiguous) delete zlapBookingKeys[key];
         zlapBookingBusy = false;
       }
     })();
