@@ -464,7 +464,9 @@ class SlotMonitor(
                         .putLong("verified_portal_at", lastReadyAt)
                         .putBoolean("session_expired", false)
                         .putInt("native_refresh_failures", 0)
-                        .putBoolean("native_refresh_issue_alerted", false).apply()
+                        .putInt("native_refresh_rejections", 0)
+                        .putBoolean("native_refresh_issue_alerted", false)
+                        .putBoolean("session_maximum_age_warned", false).apply()
                     sessionAlertSent = false
                     prefs.edit().putBoolean("session_alert_sent", false).apply()
                     lastError = ""
