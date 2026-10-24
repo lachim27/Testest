@@ -137,8 +137,14 @@
       if (isTarget(url)) { lastRequest = Date.now(); requestInFlight = true; send({kind:'request', source:'portal'}); }
       return fetchOriginal.apply(this, arguments).then(function (res) {
         if (isTarget(url)) requestInFlight = false;
-        if (hadAuthenticatedRequest && /\/jwt\/refresh/i.test(String(url)) &&
-            (res.status === 401 || res.status === 403)) send({kind:'auth', status:res.status});
+        if (hadAuthenticatedRequest && /\/jwt\/refresh/i.test(String(url))) {
+          if (res.status === 401 || res.status === 403) {
+            send({kind:'auth', status:res.status});
+          } else if (res.status === 204 || (res.status === 200 &&
+                     /json/i.test(res.headers.get('Content-Type') || ''))) {
+            send({kind:'auth_alive'}); // Actual portal refresh response
+          }
+        }
         function inspect() {
           try {
             res.clone().text().then(function (txt) {
