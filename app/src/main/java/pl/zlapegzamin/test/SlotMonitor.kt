@@ -109,6 +109,7 @@ class SlotMonitor(
     val searchesThisHour: Int get() = rateGuard.usedInHour()
     /** Planned auto time is intentionally unaffected by manual search requests. */
     val nextPlannedAutoAt: Long get() = rateGuard.nextScheduledAutomatic(effectiveSeconds)
+    val lastAutomaticRequestAt: Long get() = rateGuard.lastAutomaticRequestAt
     val nextCheckAt: Long get() = nextAllowed()
     val lastAutoIssue: String get() = prefs.getString("last_auto_issue", "").orEmpty()
     val lastAutoIssueAt: Long get() = prefs.getLong("last_auto_issue_at", 0L)
