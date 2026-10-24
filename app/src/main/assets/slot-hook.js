@@ -229,14 +229,14 @@
         var label = normalizeLabel(
           el.innerText || el.textContent || el.value || el.getAttribute('aria-label') ||
           el.getAttribute('title'));
-        var exactExtension = /\b(przedluz|odnow|wydluz)\b.*\b(sesj|logowan)\b/.test(label) ||
+        var exactExtension = /\b(przedluz|odnow|wydluz)\b.*\b(sesj\w*|logowan\w*)\b/.test(label) ||
           /\b(extend|renew)\b.*\bsession\b/.test(label) ||
           /pozostan.*zalogowan/.test(label);
         var dialog = el.closest('[role="dialog"], [aria-modal="true"], .modal, .dialog');
         var context = dialog || (el.parentElement && el.parentElement.parentElement);
         var warning = normalizeLabel(context && context.innerText);
         var shortButton = /^(przedluz|odnow|wydluz)$/.test(label) &&
-          /\b(sesj|wylogowan|logowan)\b/.test(warning);
+          /\b(sesj\w*|wylogowan\w*|logowan\w*)\b/.test(warning);
         if (!exactExtension && !shortButton) continue;
         if (!visible(el)) continue;
         lastExtensionClick = Date.now();
