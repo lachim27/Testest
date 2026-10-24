@@ -42,7 +42,7 @@ class MonitorForegroundService : Service() {
             } catch (_: Exception) {
                 // The watchdog and notification service must never crash.
             } finally {
-                if (!destroyed) handler.postDelayed(this, 45_000L)
+                if (!destroyed) handler.postDelayed(this, 20_000L)
             }
         }
     }
@@ -105,6 +105,14 @@ class MonitorForegroundService : Service() {
         // Invoke the live WebView on the UI thread. If its saved authenticated
         // request disappeared, do not waste battery refreshing an unusable tab.
         val portalAlive = PortalMonitorBridge.pulse()
+        if (portalAlive) {
+            // The same native rate guard is shared with Activity ticker.
+            // This drives exam reads (and subsequent opt-in booking) even if
+            // the Activity's own handler becomes delayed after Home/screen lock.
+            PortalMonitorBridge.pollIfDue()
+            prefs.edit().putLong("background_poll_scheduler_at",
+                System.currentTimeMillis()).apply()
+        }
         if (!portalAlive) {
             releaseCpuAwake()
             return
