@@ -414,9 +414,18 @@ class DashboardActivity : Activity() {
                 "Po sukcesie autorezerwacja wyłączy się sama."
             )
             .setPositiveButton("Włącz autorezerwację") { _, _ ->
-                if (monitor.setAutoReserve(true))
-                    Toast.makeText(this, "Autorezerwacja włączona. Czekam na poprawny odczyt.", Toast.LENGTH_LONG).show()
-                else
+                if (monitor.setAutoReserve(true)) {
+                    // Consent to automatic booking also starts its monitor.
+                    // Otherwise the setting could misleadingly show "ON"
+                    // while the user had manually paused all polling.
+                    if (!monitor.enabled) {
+                        monitor.setEnabled(true)
+                        startBackgroundMonitor()
+                    }
+                    Toast.makeText(this,
+                        "Autorezerwacja i monitor włączone. Czekam na poprawny odczyt.",
+                        Toast.LENGTH_LONG).show()
+                } else
                     Toast.makeText(this,
                         "Nie można włączyć autorezerwacji. Sprawdź daty i poprzednie rezerwacje.",
                         Toast.LENGTH_LONG).show()
