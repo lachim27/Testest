@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -27,10 +28,156 @@ class MonitorForegroundService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("slot_monitor_v1", Context.MODE_PRIVATE) }
     private val minute = 60_000L
+    private val refreshPeriod = 4 * minute
+    private var backgroundWakeLock: PowerManager.WakeLock? = null
+    private var lastWakeAcquiredAt = 0L
+    private var refreshBusy = false
+    private var destroyed = false
     private val watchdog = object : Runnable {
         override fun run() {
-            checkWebViewHeartbeat()
-            handler.postDelayed(this, minute)
+            if (destroyed) return
+            try {
+                maintainBackgroundSession()
+                checkWebViewHeartbeat()
+            } catch (_: Exception) {
+                // The watchdog and notification service must never crash.
+            } finally {
+                if (!destroyed) handler.postDelayed(this, 45_000L)
+            }
+        }
+    }
+
+    private fun releaseCpuAwake() {
+        try { if (backgroundWakeLock?.isHeld == true) backgroundWakeLock?.release() }
+        catch (_: Exception) { }
+        lastWakeAcquiredAt = 0L
+    }
+
+    private fun keepCpuAwake() {
+        try {
+            val now = System.currentTimeMillis()
+            if (backgroundWakeLock == null) {
+                backgroundWakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZlapEgzamin:BackgroundSession")
+                    .apply { setReferenceCounted(false) }
+            }
+            if (backgroundWakeLock?.isHeld != true || now - lastWakeAcquiredAt >= 90_000L) {
+                releaseCpuAwake()
+                // A bounded lock is renewed only while an authenticated WebView
+                // is actively being monitored in the background. The display
+                // stays off; this may increase battery use.
+                backgroundWakeLock?.acquire(3 * minute)
+                lastWakeAcquiredAt = now
+            }
+        } catch (_: Exception) {
+            // Device power-management policy may restrict background operation.
+        }
+    }
+
+    private fun maintainBackgroundSession() {
+        val enabled = prefs.getBoolean("enabled", true)
+        val background = prefs.getBoolean("app_in_background", false)
+        val keepAlive = prefs.getBoolean("background_session_maintenance", true)
+        val expired = prefs.getBoolean("session_expired", false)
+        val authenticatedAt = prefs.getLong("authenticated_at", 0L)
+        val now = System.currentTimeMillis()
+        if (!enabled || !background || !keepAlive || expired ||
+            authenticatedAt <= 0L || authenticatedAt > now) {
+            releaseCpuAwake()
+            return
+        }
+
+        // If the Activity's WebView has been destroyed, an isolated foreground
+        // service cannot perform the authenticated JavaScript exam polling.
+        if (!PortalMonitorBridge.attached()) {
+            releaseCpuAwake()
+            if (now - authenticatedAt >= 4 * minute &&
+                prefs.getBoolean("background_monitor_absent_alerted", false).not()) {
+                prefs.edit().putBoolean("background_monitor_absent_alerted", true).apply()
+                val msg = "Android zamknął okno portalu, więc monitorowanie i " +
+                    "przedłużanie sesji nie może działać. Otwórz ponownie ZłapEgzamin."
+                showSessionWarning(msg)
+                sendTelegram("ZłapEgzamin: " + msg)
+            }
+            return
+        }
+
+        keepCpuAwake()
+        // Invoke the real WebView bridge from the native main thread. JavaScript
+        // setInterval is not a reliable background scheduler on Android.
+        PortalMonitorBridge.pulse()
+
+        if (refreshBusy) return
+        val lastAttempt = prefs.getLong("native_refresh_attempt_at", 0L)
+        val base = maxOf(authenticatedAt, lastAttempt)
+        if (now - base < refreshPeriod) return
+
+        refreshBusy = true
+        prefs.edit().putLong("native_refresh_attempt_at", now)
+            .putString("native_refresh_status", "Odświeżanie sesji w toku").apply()
+        thread(name = "zlap-jwt-refresh") {
+            val result = PortalJwtRefresher.refresh()
+            handler.post {
+                refreshBusy = false
+                if (!destroyed) handleRefreshResult(result)
+            }
+        }
+    }
+
+    private fun handleRefreshResult(result: PortalJwtRefresher.Result) {
+        val now = System.currentTimeMillis()
+        // Ignore responses arriving after the monitor has been disabled.
+        if (!prefs.getBoolean("enabled", true)) return
+        when (result) {
+            is PortalJwtRefresher.Result.Refreshed -> {
+                prefs.edit()
+                    .putLong("native_refresh_ok_at", now)
+                    .putLong("verified_portal_at", now)
+                    .putString("native_refresh_status", "Odnowiono sesję przez JWT")
+                    .putInt("native_refresh_failures", 0)
+                    .putBoolean("native_refresh_issue_alerted", false)
+                    .apply()
+            }
+            is PortalJwtRefresher.Result.Rejected -> {
+                val count = prefs.getInt("native_refresh_failures", 0) + 1
+                prefs.edit().putInt("native_refresh_failures", count)
+                    .putString("native_refresh_status", "JWT HTTP " + result.status)
+                    .apply()
+                // A second rejection rules out a transient cookie-rotation race.
+                if (count >= 2 && !prefs.getBoolean("session_expired", false)) {
+                    prefs.edit().putBoolean("session_expired", true)
+                        .putBoolean("session_alert_sent", true).apply()
+                    val msg = "Portal odrzucił odnowienie sesji (HTTP " + result.status +
+                        "). Otwórz ZłapEgzamin i zaloguj się ponownie przez mObywatel."
+                    showSessionWarning(msg)
+                    sendTelegram("ZłapEgzamin: " + msg)
+                    releaseCpuAwake()
+                }
+            }
+            is PortalJwtRefresher.Result.AcceptedWithoutCookieUpdate -> {
+                recordRefreshProblem("Portal potwierdził żądanie, ale nie zwrócił nowego JWT.")
+            }
+            is PortalJwtRefresher.Result.NoAuthenticatedCookie -> {
+                recordRefreshProblem("Nie znaleziono ciasteczka sesji WebView.")
+            }
+            is PortalJwtRefresher.Result.TemporaryFailure -> {
+                recordRefreshProblem(
+                    if (result.status == null) "Błąd sieci przy odnawianiu sesji."
+                    else "Odnowienie sesji: HTTP " + result.status + "."
+                )
+            }
+        }
+    }
+
+    private fun recordRefreshProblem(reason: String) {
+        val count = prefs.getInt("native_refresh_failures", 0) + 1
+        prefs.edit().putInt("native_refresh_failures", count)
+            .putString("native_refresh_status", reason).apply()
+        if (count >= 2 && !prefs.getBoolean("native_refresh_issue_alerted", false)) {
+            prefs.edit().putBoolean("native_refresh_issue_alerted", true).apply()
+            val msg = reason + " Sesja może wygasnąć w tle. Sprawdź portal."
+            showSessionWarning(msg)
+            sendTelegram("ZłapEgzamin: " + msg)
         }
     }
 
@@ -49,11 +196,11 @@ class MonitorForegroundService : Service() {
             Notification.Builder(this, "monitor_active")
                 .setSmallIcon(android.R.drawable.ic_popup_sync)
                 .setContentTitle("ZłapEgzamin — monitor")
-                .setContentText("Sprawdzanie stanu monitorowania")
+                .setContentText("Monitor i podtrzymywanie sesji po zminimalizowaniu")
                 .setOngoing(true)
                 .build()
         )
-        handler.postDelayed(watchdog, minute)
+        handler.post(watchdog)
     }
 
     private fun checkWebViewHeartbeat() {
@@ -138,11 +285,18 @@ class MonitorForegroundService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!prefs.getBoolean("enabled", true)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_STICKY
+    }
 
     override fun onDestroy() {
+        destroyed = true
         handler.removeCallbacks(watchdog)
+        releaseCpuAwake()
         super.onDestroy()
     }
 
