@@ -29,7 +29,16 @@ class RateGuard(context: Context) {
         return true
     }
     private val safety = 45_000L
-    private val maxRequestsPerHour = 4
+    /** User-configurable local automatic search quota. Default remains 4/hour. */
+    val maxRequestsPerHour: Int
+        get() = prefs.getInt("max_requests_per_hour", 4).coerceAtLeast(1)
+
+    fun setMaxRequestsPerHour(limit: Int): Boolean {
+        if (limit <= 0) return false
+        // Preserve historical request timestamps: changing the quota does
+        // not wipe activity or circumvent an existing HTTP 429 Retry-After.
+        return prefs.edit().putInt("max_requests_per_hour", limit).commit()
+    }
 
     private fun requests(now: Long): MutableList<Long> =
         (prefs.getString("requests", "") ?: "")
@@ -58,7 +67,7 @@ class RateGuard(context: Context) {
         return if (entries.isEmpty()) 0L else entries.last() + hour
     }
 
-    /** Time when the local 4-per-hour budget will permit another automatic request. */
+    /** Time when the selected local hourly budget permits another automatic request. */
     fun nextQuotaSlotAt(): Long {
         val entries = requests(System.currentTimeMillis())
         return if (entries.size < maxRequestsPerHour) 0L
