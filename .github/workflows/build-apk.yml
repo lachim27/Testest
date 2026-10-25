@@ -47,7 +47,7 @@ jobs:
           node --test tests/booking-safety.test.js
 
       - name: Build APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle testDebugUnitTest assembleDebug --no-daemon
 
       - name: Verify APK exists
         run: |
@@ -72,6 +72,6 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ZlapEgzamin-Android.apk
           gh release create "android-beta-${GITHUB_RUN_NUMBER}" ZlapEgzamin-Android.apk \
             --target "${GITHUB_SHA}" \
-            --title "ZlapEgzamin Android 0.5 beta (#${GITHUB_RUN_NUMBER})" \
-            --notes "Wersja testowa: nowy interfejs, kalendarz, opcje dat i interwalu oraz ochrona HTTP 429. Nie wykonuje rezerwacji." \
+            --title "ZlapEgzamin Android (#${GITHUB_RUN_NUMBER})" \
+            --notes "Wersja testowa z wyborem godzin autorezerwacji. Autorezerwacja po włączeniu wykonuje rzeczywiste zajęcie miejsca; płatność w portalu." \
             --prerelease

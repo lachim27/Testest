@@ -409,7 +409,9 @@ class DashboardActivity : Activity() {
             .setMessage(
                 "ZłapEgzamin spróbuje samodzielnie ZAJĄĆ jedno wolne miejsce na egzamin " +
                 "praktyczny kat. B w MORD Kraków w zakresie " +
-                monitor.dateFrom + " – " + monitor.dateTo + ".\n\n" +
+                monitor.dateFrom + " – " + monitor.dateTo +
+                ", w godzinach " + monitor.bookingTimeFrom + "–" + monitor.bookingTimeTo +
+                " (czas polski, włącznie).\n\n" +
                 "To wykonuje rzeczywistą operację na Twoim koncie info-kierowca.pl. " +
                 "Po potwierdzeniu rezerwacji dostaniesz alert na telefon i Telegram. " +
                 "Opłacenie egzaminu nadal należy do Ciebie (zwykle do 30 minut). " +
@@ -809,8 +811,39 @@ class DashboardActivity : Activity() {
         val booking = card()
         put(booking, text("AUTOREZERWACJA – ZAJĘCIE MIEJSCA", 12f, blue, true), 12)
         put(booking, text("ZłapEgzamin sam utworzy tymczasową rezerwację dla " +
-            "jednego terminu spełniającego zakres dat. Po potwierdzeniu przez portal wyśle " +
+            "jednego terminu spełniającego zakres dat i godzin. Po potwierdzeniu przez portal wyśle " +
             "powiadomienie i zatrzyma automat. Nie pobiera pieniędzy.", 14f, muted), 10)
+        put(booking, text("GODZINY EGZAMINU", 12f, blue, true), 8)
+        put(booking, text("Codziennie, czas polski; obie granice włącznie. " +
+            "To godziny rozpoczęcia egzaminu, nie pracy automatu. " +
+            "Lista terminów i powiadomienia nadal obejmują cały wybrany zakres dat.",
+            13f, muted), 10)
+        fun pickBookingTime(isFrom: Boolean) {
+            val stored = if (isFrom) monitor.bookingTimeFrom else monitor.bookingTimeTo
+            val initial = runCatching { java.time.LocalTime.parse(stored) }
+                .getOrDefault(java.time.LocalTime.MIDNIGHT)
+            val pickerStyle = if (darkMode) android.R.style.Theme_Material_Dialog_Alert
+                else android.R.style.Theme_Material_Light_Dialog_Alert
+            android.app.TimePickerDialog(this, pickerStyle, { _, hour, minute ->
+                val chosen = String.format(Locale.US, "%02d:%02d", hour, minute)
+                val from = if (isFrom) chosen else monitor.bookingTimeFrom
+                val to = if (isFrom) monitor.bookingTimeTo else chosen
+                if (monitor.setBookingTimeRange(from, to)) show("settings")
+                else Toast.makeText(this,
+                    "Godzina od nie może być późniejsza niż do. Nie zmieniaj godzin podczas trwającej rezerwacji.",
+                    Toast.LENGTH_LONG).show()
+            }, initial.hour, initial.minute, true).show()
+        }
+        put(booking, action("Godzina od: " + monitor.bookingTimeFrom, false) {
+            pickBookingTime(true)
+        }, 8)
+        put(booking, action("Godzina do: " + monitor.bookingTimeTo, false) {
+            pickBookingTime(false)
+        }, 8)
+        put(booking, action("Wszystkie godziny (00:00–23:59)", false) {
+            if (monitor.setBookingTimeRange("00:00", "23:59")) show("settings")
+            else Toast.makeText(this, "Poczekaj na zakończenie rezerwacji.", Toast.LENGTH_LONG).show()
+        }, 12)
         put(booking, text(if (monitor.autoReserveEnabled) "● WŁĄCZONA" else "○ WYŁĄCZONA",
             17f, if (monitor.autoReserveEnabled) green else muted, true), 9)
         put(booking, text("Status: " + monitor.lastBookingStatus, 13f, muted), 8)

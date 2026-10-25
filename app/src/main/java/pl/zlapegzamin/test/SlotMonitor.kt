@@ -83,6 +83,17 @@ class SlotMonitor(
         prefs.edit().putString("date_from", from).putString("date_to", to).remove("last_ids").apply()
         onUpdate()
     }
+    val bookingTimeFrom: String get() = prefs.getString("booking_time_from", "00:00") ?: "00:00"
+    val bookingTimeTo: String get() = prefs.getString("booking_time_to", "23:59") ?: "23:59"
+    fun setBookingTimeRange(from: String, to: String): Boolean {
+        // A submitted reservation cannot be changed by editing preferences.
+        if (bookingInFlight || !BookingTimeRange.isValid(from, to)) return false
+        prefs.edit().putString("booking_time_from", from)
+            .putString("booking_time_to", to).apply()
+        event("Godziny egzaminu dla autorezerwacji: $from–$to")
+        onUpdate()
+        return true
+    }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val backgroundSessionMaintenanceEnabled: Boolean
         get() = prefs.getBoolean("background_session_maintenance", true)
@@ -149,6 +160,7 @@ class SlotMonitor(
     fun setAutoReserve(value: Boolean): Boolean {
         if (value) {
             if (bookingNeedsReview || bookingInFlight) return false
+            if (!BookingTimeRange.isValid(bookingTimeFrom, bookingTimeTo)) return false
             if (dateFrom.isBlank() || dateTo.isBlank() || dateFrom > dateTo) return false
             try {
                 val from = java.time.LocalDate.parse(dateFrom)
@@ -693,6 +705,7 @@ class SlotMonitor(
         val candidate = available.entries.sortedBy { it.value }.firstOrNull { (key, date) ->
             val day = date.take(10)
             day >= java.time.LocalDate.now().toString() &&
+                BookingTimeRange.includes(date, bookingTimeFrom, bookingTimeTo) &&
                 (key != lastKey || now - lastWhen >= 45 * 60_000L)
         } ?: return
         val separator = candidate.key.indexOf('|')

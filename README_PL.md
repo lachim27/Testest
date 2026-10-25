@@ -51,3 +51,9 @@ Hasła, PKK i treść przechwyconego żądania pozostają w zalogowanym WebView.
 Workflow `.github/workflows/build-apk.yml` kompiluje poleceniem `gradle assembleDebug --no-daemon` i publikuje `app-debug.apk` w artefakcie `ZlapEgzamin-APK`. Commit oznaczony `[apk]` publikuje dodatkowo plik `ZlapEgzamin-Android.apk` jako zasób GitHub Release umożliwiający bezpośrednie pobranie (bez ZIP).
 
 Projekt nie jest związany z właścicielem ZłapTermin ani portalem info-kierowca.pl.
+
+
+## Godziny autorezerwacji (0.13)
+W Ustawienia → Autorezerwacja ustaw „Godzina od” i „Godzina do”. Zakres dotyczy godziny rozpoczęcia egzaminu każdego dnia, w polskiej strefie czasowej, z uwzględnieniem obu granic. Domyślnie 00:00–23:59. Ustawienia są zapamiętywane po zamknięciu aplikacji. Wybranie identycznych godzin dopuszcza tylko tę minutę; zakres przez północ jest odrzucany.
+
+Filtr dotyczy wyłącznie autorezerwacji: odczyty, lista i powiadomienia zachowują dotychczasowe działanie. Automat wybiera najwcześniejszy termin spełniający zakres dat i godzin, pomijając wcześniejsze niedopasowane terminy. Zmiana godzin nie zmienia już wysłanej rezerwacji.
