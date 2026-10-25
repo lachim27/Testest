@@ -165,6 +165,13 @@ class SlotMonitor(
     }
     val blockedUntil: Long get() = rateGuard.blockedUntil
     val searchesThisHour: Int get() = rateGuard.usedInHour()
+    val maxRequestsPerHour: Int get() = rateGuard.maxRequestsPerHour
+    fun setMaxRequestsPerHour(value: Int): Boolean {
+        if (!rateGuard.setMaxRequestsPerHour(value)) return false
+        event("Zmieniono lokalny limit automatu na " + value + " zapytań/60 min")
+        onUpdate()
+        return true
+    }
     val nextCountDecreaseAt: Long get() = rateGuard.nextCountDecreaseAt()
     val allCountedRequestsExpireAt: Long get() = rateGuard.allCountedRequestsExpireAt()
     val nextQuotaSlotAt: Long get() = rateGuard.nextQuotaSlotAt()
@@ -499,7 +506,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Zapytania z ostatnich 60 min: " + searchesThisHour + " (próg automatu: 4). " +
+                ". Zapytania z ostatnich 60 min: " + searchesThisHour + " (limit automatu: " + maxRequestsPerHour + "). " +
                 "Następny automat: " + (if (nextPlannedAutoAt == 0L) "gotowy do startu" else clock(nextPlannedAutoAt)) +
                 (if (nextPlannedAutoAt > 0L && nextPlannedAutoAt <= now)
                     " (termin minął – czeka na możliwość wykonania)" else "") +
@@ -528,7 +535,7 @@ class SlotMonitor(
                     }
                     lastAttemptAt = System.currentTimeMillis()
                     diagnostics = (if (automatic) "Automatyczne" else "Ręczne lub portalowe") +
-                        " zapytanie. Ostatnie 60 min: " + rateGuard.usedInHour() + " (próg automatu 4)."
+                        " zapytanie. Ostatnie 60 min: " + rateGuard.usedInHour() + " (limit automatu " + maxRequestsPerHour + ")."
                 }
                 "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {
