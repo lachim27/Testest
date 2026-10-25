@@ -547,7 +547,7 @@ class SlotMonitor(
                     }
                     lastAttemptAt = System.currentTimeMillis()
                     diagnostics = (if (automatic) "Automatyczne" else "Ręczne lub portalowe") +
-                        " zapytanie. Ostatnie 60 min: " + rateGuard.usedInHour() + " (limit automatu " + maxRequestsPerHour + ")."
+                        " zapytanie. Bieżący cykl: " + rateGuard.usedInHour() + " (limit automatu " + maxRequestsPerHour + ")."
                 }
                 "response" -> { requestPending = false; lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Odpowiedź API: HTTP " + message.optInt("status") }
                 "ready" -> {

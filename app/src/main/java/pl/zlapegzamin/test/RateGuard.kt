@@ -40,38 +40,33 @@ class RateGuard(context: Context) {
         return prefs.edit().putInt("max_requests_per_hour", limit).commit()
     }
 
-    private fun requests(now: Long): MutableList<Long> =
-        (prefs.getString("requests", "") ?: "")
-            .split(",")
-            .mapNotNull { it.toLongOrNull() }
-            .filter { it > now - hour && it <= now + 60_000L }
-            .sorted()
-            .toMutableList()
+    private fun window(now: Long): HourlySearchWindow {
+        val raw = prefs.getString("requests", "").orEmpty()
+        val start = prefs.getLong("quota_window_start", 0L)
+        val current = HourlySearchWindow.restore(start,
+            raw.split(",").mapNotNull { it.toLongOrNull() }, now)
+        val timestamps = current.requests.joinToString(",")
+        if (start != current.startedAt || raw != timestamps) {
+            prefs.edit().putLong("quota_window_start", current.startedAt)
+                .putString("requests", timestamps).apply()
+        }
+        return current
+    }
 
     val blockedUntil: Long get() = prefs.getLong("blocked_until", 0L)
     val strikes: Int get() = prefs.getInt("strikes", 0)
     val lastAutomaticRequestAt: Long get() = prefs.getLong("last_automatic_request", 0L)
 
-    /** Real requests in the trailing 60 minutes, including portal and manual searches. */
-    fun usedInHour(): Int = requests(System.currentTimeMillis()).size
+    /** All real searches in the current fixed 60-minute cycle. */
+    fun usedInHour(): Int = window(System.currentTimeMillis()).requests.size
 
-    /** Timestamp when the oldest currently counted request leaves the rolling window. */
-    fun nextCountDecreaseAt(): Long {
-        val entries = requests(System.currentTimeMillis())
-        return if (entries.isEmpty()) 0L else entries.first() + hour
-    }
+    /** The whole counter resets together, never one request at a time. */
+    fun nextCountDecreaseAt(): Long = window(System.currentTimeMillis()).resetsAt
+    fun allCountedRequestsExpireAt(): Long = nextCountDecreaseAt()
 
-    /** Timestamp after which no currently counted request remains in the window. */
-    fun allCountedRequestsExpireAt(): Long {
-        val entries = requests(System.currentTimeMillis())
-        return if (entries.isEmpty()) 0L else entries.last() + hour
-    }
-
-    /** Time when the selected local hourly budget permits another automatic request. */
     fun nextQuotaSlotAt(): Long {
-        val entries = requests(System.currentTimeMillis())
-        return if (entries.size < maxRequestsPerHour) 0L
-            else entries[entries.size - maxRequestsPerHour] + hour + safety
+        val current = window(System.currentTimeMillis())
+        return if (current.requests.size < maxRequestsPerHour) 0L else current.resetsAt
     }
 
     /**
@@ -81,9 +76,9 @@ class RateGuard(context: Context) {
      */
     fun recordRequest(automatic: Boolean = false) {
         val now = System.currentTimeMillis()
-        val list = requests(now)
-        list.add(now)
-        val editor = prefs.edit().putString("requests", list.joinToString(","))
+        val current = window(now).record(now)
+        val editor = prefs.edit().putString("requests", current.requests.joinToString(","))
+            .putLong("quota_window_start", current.startedAt)
             .putLong("last_request", now)
         if (automatic) editor.putLong("last_automatic_request", now)
         editor.apply()
@@ -98,10 +93,10 @@ class RateGuard(context: Context) {
 
     fun nextAllowed(chosenSeconds: Int): Long {
         val now = System.currentTimeMillis()
-        val list = requests(now)
+        val current = window(now)
         var due = maxOf(nextScheduledAutomatic(chosenSeconds), blockedUntil)
-        if (list.size >= maxRequestsPerHour) {
-            due = maxOf(due, list[list.size - maxRequestsPerHour] + hour + safety)
+        if (current.requests.size >= maxRequestsPerHour) {
+            due = maxOf(due, current.resetsAt)
         }
         return due
     }

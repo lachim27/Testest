@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.13-booking-hours"
+        versionCode = 12
+        versionName = "0.14-full-hourly-reset"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

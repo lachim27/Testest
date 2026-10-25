@@ -57,3 +57,8 @@ Projekt nie jest związany z właścicielem ZłapTermin ani portalem info-kierow
 W Ustawienia → Autorezerwacja ustaw „Godzina od” i „Godzina do”. Zakres dotyczy godziny rozpoczęcia egzaminu każdego dnia, w polskiej strefie czasowej, z uwzględnieniem obu granic. Domyślnie 00:00–23:59. Ustawienia są zapamiętywane po zamknięciu aplikacji. Wybranie identycznych godzin dopuszcza tylko tę minutę; zakres przez północ jest odrzucany.
 
 Filtr dotyczy wyłącznie autorezerwacji: odczyty, lista i powiadomienia zachowują dotychczasowe działanie. Automat wybiera najwcześniejszy termin spełniający zakres dat i godzin, pomijając wcześniejsze niedopasowane terminy. Zmiana godzin nie zmienia już wysłanej rezerwacji.
+
+## Reset całego limitu (0.14)
+Limit lokalny działa w stałych cyklach: pierwsze zapytanie rozpoczyna 60 minut, a po ich upływie cały licznik wraca do zera. Przykład: zapytania o 10:00, 10:15, 10:30 i 10:45 zostają wyzerowane razem o 11:00. Pierwsze zapytanie po resecie rozpoczyna kolejny cykl. Restart aplikacji, kolejne zapytania i zmiana limitu nie przesuwają końca bieżącego cyklu.
+
+Odstęp pomiędzy automatycznymi odczytami i ewentualna blokada HTTP 429 nadal obowiązują niezależnie od odnowienia lokalnego limitu. Odczyty ręczne nadal są uwzględniane w liczniku.

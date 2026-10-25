@@ -78,16 +78,14 @@ class DashboardActivity : Activity() {
         val formatter = SimpleDateFormat("HH:mm:ss", Locale("pl", "PL"))
         fun time(at: Long) = formatter.format(java.util.Date(at))
         liveStatusView?.text = monitor.status()
-        liveCountView?.text = "Zapytania w ostatnich 60 minutach: " + count +
+        liveCountView?.text = "Zapytania w bieżącym cyklu: " + count +
             " (limit automatyczny: " + hourlyLimit + ")"
-        val first = monitor.nextCountDecreaseAt
-        val last = monitor.allCountedRequestsExpireAt
+        val resetAt = monitor.allCountedRequestsExpireAt
         liveExpiryView?.text = if (count == 0) {
-            "Licznik wynosi 0. Kolejne zapytanie podniesie go o 1."
+            "Pełny limit dostępny. Pierwsze zapytanie rozpocznie nowy cykl 60 minut."
         } else {
-            "Najbliższe zmniejszenie licznika: " + time(first) +
-                ". Bez nowych zapytań licznik spadnie do 0 o " + time(last) +
-                ". Jest to ruchome okno 60 minut."
+            "Reset całego licznika: " + time(resetAt) +
+                ". Po 60 minutach od pierwszego zapytania wraca pełny limit."
         }
         val quota = monitor.nextQuotaSlotAt
         val blocked = monitor.blockedUntil
@@ -98,7 +96,7 @@ class DashboardActivity : Activity() {
             count >= hourlyLimit -> "Osiągnięto ustawiony limit automatu: " +
                 hourlyLimit + " zapytań na 60 minut."
             else -> "W limicie lokalnym pozostało " + (hourlyLimit - count) +
-                " automatycznych zapytań w obecnym oknie."
+                " automatycznych zapytań w bieżącym cyklu."
         }
     }
 
@@ -991,7 +989,7 @@ class DashboardActivity : Activity() {
         put(hourly, text("Możesz ustawić dowolną dodatnią liczbę całkowitą. " +
             "Zmiana dotyczy tylko ograniczenia ZłapEgzamin — nie zmienia limitów " +
             "portalu info-kierowca.pl ani blokady HTTP 429. " +
-            "Dotychczasowe zapytania pozostają w liczniku przez 60 minut.",
+            "Cały licznik zeruje się 60 minut po pierwszym zapytaniu w cyklu. Kolejne zapytania i zmiana limitu nie przesuwają resetu.",
             13f, muted), 11)
         val hourlyLimitField = EditText(this).apply {
             hint = "Np. 6, 10, 12, 24..."
@@ -1029,7 +1027,7 @@ class DashboardActivity : Activity() {
         put(debug, text(monitor.diagnostics, 14f, muted), 12)
         put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
         put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
-        put(debug, text("Zapytania w ostatnich 60 minutach: " +
+        put(debug, text("Zapytania w bieżącym cyklu: " +
             monitor.searchesThisHour + " (limit automatu: " +
             monitor.maxRequestsPerHour + ")", 13f, muted), 10)
         put(debug, text("Blokada HTTP 429: " +
