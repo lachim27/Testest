@@ -1,6 +1,6 @@
 /* ZlapEgzamin authenticated portal helper. Auto-hold is disabled by default
  * and started ONLY after an explicit opt-in in the Android settings.
- * Login credentials, PKK and auth headers remain inside this page's context. */
+ * Captured query/auth headers may be handed to the native reader in memory only. */
 (function () {
   'use strict';
   if (window.__zlapHookV3) return;
@@ -67,6 +67,11 @@
       url: resolved, body: body, headers: headers,
       credentials: originalCredentials || 'same-origin'
     };
+    // In-memory handoff: Android performs automatic reads without waiting for
+    // background WebView fetch promises or JavaScript timeout callbacks.
+    var nativeHeaders = {};
+    try { new Headers(headers).forEach(function(value, key) { nativeHeaders[key] = value; }); } catch (_) {}
+    send({kind:'native_request_ready', url:resolved, body:body, headers:nativeHeaders});
     hadAuthenticatedRequest = true;
     if (!wasReady) send({kind: 'ready'});
     return true;

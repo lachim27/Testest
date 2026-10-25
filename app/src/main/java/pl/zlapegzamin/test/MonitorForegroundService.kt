@@ -125,6 +125,7 @@ class MonitorForegroundService : Service() {
         // request disappeared, do not waste battery refreshing an unusable tab.
         val portalAlive = PortalMonitorBridge.pulse()
         if (portalAlive) {
+            keepCpuAwake()
             // The same native rate guard is shared with Activity ticker.
             // This drives exam reads (and subsequent opt-in booking) even if
             // the Activity's own handler becomes delayed after Home/screen lock.
@@ -280,7 +281,9 @@ class MonitorForegroundService : Service() {
                 now - authenticatedAt > 48 * 60 * minute) return
             // Warn before a known ~10-minute browser idle timeout is likely.
             // A missing heartbeat does not by itself prove the portal logged out.
-            if (now - lastBeat < 4 * minute) return
+            // Successful native reads/refreshes prove that the monitor still
+            // works even when WebView's heartbeat callbacks are suspended.
+            if (now - maxOf(lastBeat, verifiedAt) < 4 * minute) return
             if (prefs.getLong("web_stalled_notified_beat", 0L) == lastBeat) return
             prefs.edit().putLong("web_stalled_notified_beat", lastBeat).apply()
             val msg = "Od ponad 4 minut nie udało się potwierdzić działania monitora w tle. " +

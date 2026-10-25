@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.14-full-hourly-reset"
+        versionCode = 13
+        versionName = "0.15-native-background-reads"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -21,5 +21,6 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.webkit:webkit:1.14.0")
 }

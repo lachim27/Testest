@@ -127,3 +127,14 @@ test('Definite HTTP 429 creates no hold and reports its server lock',async()=>{
   assert.equal(rate.retryAfter,'1800');
   assert.equal(f.calls.filter(x=>/\/Reservations\/create$/.test(x)).length,1);
 });
+
+test('Captured exam request is handed to native reader before readiness', async () => {
+  const f = fixture(async () => response(201, {id: bookingId}));
+  await f.loginByOpeningExamList();
+  const captured = f.events.find(x => x.kind === 'native_request_ready');
+  assert.ok(captured);
+  assert.equal(captured.url, origin + '/bknd/exam/api/v1/OneCenterExam');
+  assert.equal(JSON.parse(captured.body).organizationId, 21);
+  assert.equal(captured.headers['content-type'], 'application/json');
+  assert.ok(f.events.indexOf(captured) < f.events.findIndex(x => x.kind === 'ready'));
+});

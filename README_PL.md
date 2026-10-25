@@ -44,7 +44,7 @@ Logowanie przez **zewnętrzną przeglądarkę** nie przekazuje sesji do WebView.
 
 ## Bezpieczeństwo
 
-Hasła, PKK i treść przechwyconego żądania pozostają w zalogowanym WebView. Do komponentu monitorowania przekazywane są wyłącznie informacje o terminach i stanie zapytań. Telegram jest opcjonalny; jego token i Chat ID są przechowywane lokalnie w ustawieniach aplikacji. Aplikacja ma `allowBackup=false`.
+Hasła pozostają w portalu. Zapytanie o terminy (w tym PKK, jeśli portal je zawiera) i jego nagłówki są przekazywane do natywnego odczytu wyłącznie w pamięci procesu. Nie są zapisywane w plikach, ustawieniach ani logach; służą tylko powtórzeniu zapytania do API info-kierowca.pl. Ciasteczka są pobierane z istniejącej sesji WebView. Telegram jest opcjonalny; jego token i Chat ID są przechowywane lokalnie w ustawieniach aplikacji. Aplikacja ma `allowBackup=false`.
 
 ## Budowanie
 
@@ -62,3 +62,8 @@ Filtr dotyczy wyłącznie autorezerwacji: odczyty, lista i powiadomienia zachowu
 Limit lokalny działa w stałych cyklach: pierwsze zapytanie rozpoczyna 60 minut, a po ich upływie cały licznik wraca do zera. Przykład: zapytania o 10:00, 10:15, 10:30 i 10:45 zostają wyzerowane razem o 11:00. Pierwsze zapytanie po resecie rozpoczyna kolejny cykl. Restart aplikacji, kolejne zapytania i zmiana limitu nie przesuwają końca bieżącego cyklu.
 
 Odstęp pomiędzy automatycznymi odczytami i ewentualna blokada HTTP 429 nadal obowiązują niezależnie od odnowienia lokalnego limitu. Odczyty ręczne nadal są uwzględniane w liczniku.
+
+## Odczyty przy zablokowanym ekranie (0.15)
+Automatyczne zapytania o terminy i analiza odpowiedzi działają natywnie na wątku Androida, bez oczekiwania na zakończenie JavaScript fetch w WebView. Po aktualizacji otwórz listę terminów w Portalu raz, aby przygotować zapytanie do powtarzania. Timeouty połączenia i odpowiedzi wynoszą po 15 sekund; osobny natywny deadline rozłącza odczyt po 45 sekundach. Jednocześnie może działać jeden odczyt automatyczny; limity i HTTP 429 nadal obowiązują.
+
+Sama rezerwacja pozostaje w WebView, z dotychczasową ochroną przed ponawianiem niepewnych operacji. Odczyty nie oznaczają gwarancji działania po zabiciu procesu przez Androida. Zachowanie konkretnego telefonu przy zablokowanym ekranie wymaga sprawdzenia na urządzeniu.

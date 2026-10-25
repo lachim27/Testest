@@ -45,6 +45,9 @@ class SlotMonitor(
     private val effectiveMs: Long get() = maxOf(intervalMs, adaptiveMs)
     private var lastNetworkActivity = 0L
     private var requestPending = false
+    private var nativeRequest: NativeExamReader.Request? = null
+    private var nativeReadBusy = false
+    private var nativeRequestVersion = 0L
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
     private val effectiveSeconds: Int get() = ((effectiveMs + 999L) / 1000L).toInt().coerceAtLeast(1)
@@ -212,7 +215,7 @@ class SlotMonitor(
         override fun run() {
             if (!resumed || destroyed) return
             val now = System.currentTimeMillis()
-            if (requestPending && now - lastAttemptAt > 90000L) requestPending = false
+            if (!nativeReadBusy && requestPending && now - lastAttemptAt > 90000L) requestPending = false
             // Native Handler keeps examining the portal session even when
             // WebView's JavaScript timers are throttled on a locked screen.
             if (enabled && supported && isPortal(web.url)) {
@@ -244,54 +247,54 @@ class SlotMonitor(
         if (destroyed || !enabled || !supported || !requestReady ||
             sessionExpired || !isPortal(web.url)) return false
         val now = System.currentTimeMillis()
-        if (requestPending && now - lastAttemptAt >= 90_000L) {
+        if (!nativeReadBusy && requestPending && now - lastAttemptAt >= 90_000L) {
             requestPending = false
             diagnostics = "Odczyt przekroczył 90 sekund; sprawdzam gotowość portalu."
         }
-        if (bookingInFlight || now < blockedUntil || now < nextAllowed() ||
+        if (bookingInFlight || nativeReadBusy || now < blockedUntil || now < nextAllowed() ||
             requestPending) return false
-        requestPending = true
-        lastAttemptAt = now
-        web.evaluateJavascript(
-            """(function() {
-              if (!window.__zlapCheckNow) return 'missing_hook';
-              return window.__zlapCheckNow() ? 'started' :
-                String(window.__zlapLastCheckReason || 'unknown');
-            })();"""
-        ) { result ->
-            if (!destroyed && result != "\"started\"") {
-                autoCheckDidNotStart(result?.removeSurrounding("\"").orEmpty())
-            }
-        }
-        return true
+        if (nativeRequest != null) return startNativeRead()
+        // Fail visibly rather than starting a WebView fetch that can freeze
+        // when the screen locks. Opening the exam list captures the query.
+        diagnostics = "Otwórz listę terminów w Portalu, aby przygotować odczyt w tle."
+        return false
     }
 
-    private fun autoCheckDidNotStart(reason: String) {
-        requestPending = false
-        val detail = when (reason) {
-            "missing_hook" -> "Brak skryptu monitorowania w bieżącej stronie."
-            "missing_request" -> "Strona utraciła zapamiętane zapytanie o terminy."
-            "previous_check_running" -> "Poprzedni odczyt wciąż trwa."
-            "portal_request_running" -> "Portal właśnie wysyła własne zapytanie."
-            "cooldown_429" -> "Skrypt portalu nadal odczekuje po HTTP 429."
-            "portal_recent_request" -> "Wymagany krótki odstęp od ostatniego zapytania portalu."
-            "request_start_failed" -> "Nie można było rozpocząć zapytania z WebView."
-            else -> "Nie udało się wywołać skryptu odczytu (WebView: " + reason.take(32) + ")."
+    private fun startNativeRead(): Boolean {
+        val request = nativeRequest ?: return false
+        if (nativeReadBusy || destroyed) return false
+        val version = nativeRequestVersion
+        val cookies = android.webkit.CookieManager.getInstance().getCookie(request.url).orEmpty()
+        val userAgent = web.settings.userAgentString
+        nativeReadBusy = true
+        requestPending = true
+        receive(JSONObject().put("kind", "request").put("source", "automatic").toString())
+        diagnostics = "Automatyczny odczyt w tle – połączenie natywne Androida."
+        thread(name = "zlap-exam-read") {
+            val result = try {
+                val response = NativeExamReader.read(request, cookies, userAgent)
+                val jar = android.webkit.CookieManager.getInstance()
+                response.cookies.forEach { jar.setCookie(request.url, it) }
+                NativeExamReader.message(response)
+            } catch (_: Exception) {
+                JSONObject().put("kind", "network").put("reason", "native_timeout_or_network")
+            }
+            handler.post {
+                nativeReadBusy = false
+                if (!destroyed) {
+                    requestPending = false
+                    lastNetworkActivity = System.currentTimeMillis()
+                    // Rate limits are authoritative even if the user changed
+                    // search criteria while this read was running.
+                    if (result.optString("kind") == "rate" ||
+                        (enabled && !sessionExpired && version == nativeRequestVersion)) {
+                        receive(result.toString())
+                    }
+                }
+            }
         }
-        val now = System.currentTimeMillis()
-        val previous = prefs.getString("last_auto_issue", "").orEmpty()
-        val previousAt = prefs.getLong("last_auto_issue_at", 0L)
-        if (reason == "missing_hook" || reason == "missing_request") {
-            requestReady = false
-            lastError = detail + " Otwórz ponownie listę terminów w zakładce Portal."
-        }
-        if (previous != detail || now - previousAt >= 2 * 60_000L) {
-            prefs.edit().putString("last_auto_issue", detail)
-                .putLong("last_auto_issue_at", now).apply()
-            diagnostics = "Automat: " + detail
-            event("Automat: " + detail)
-            onUpdate()
-        }
+        onUpdate()
+        return true
     }
 
     fun install() {
@@ -428,6 +431,8 @@ class SlotMonitor(
     fun destroy() {
         pause()
         destroyed = true
+        nativeRequest = null
+        nativeRequestVersion++
     }
 
     /**
@@ -449,7 +454,7 @@ class SlotMonitor(
             onResult("Najpierw zaloguj się w Portalu i wyświetl listę terminów.")
             return
         }
-        if (requestPending) {
+        if (requestPending || nativeReadBusy || bookingInFlight) {
             onResult("Poprzedni odczyt nadal trwa.")
             return
         }
@@ -518,7 +523,7 @@ class SlotMonitor(
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
-                ". Zapytania z ostatnich 60 min: " + searchesThisHour + " (limit automatu: " + maxRequestsPerHour + "). " +
+                ". Zapytania w bieżącym cyklu: " + searchesThisHour + " (limit automatu: " + maxRequestsPerHour + "). " +
                 "Następny automat: " + (if (nextPlannedAutoAt == 0L) "gotowy do startu" else clock(nextPlannedAutoAt)) +
                 (if (nextPlannedAutoAt > 0L && nextPlannedAutoAt <= now)
                     " (termin minął – czeka na możliwość wykonania)" else "") +
@@ -531,6 +536,11 @@ class SlotMonitor(
         try {
             val message = JSONObject(raw)
             when (message.optString("kind")) {
+                "native_request_ready" -> {
+                    nativeRequestVersion++
+                    nativeRequest = NativeExamReader.capture(message)
+                    if (nativeRequest == null) diagnostics = "Nieobsługiwane zapytanie do odczytu w tle."
+                }
                 "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
                 "candidate" -> { if (!requestReady) diagnostics = "Wykryto ścieżkę API: " + message.optString("path").take(100) + ". Sprawdzanie zgodności..." }
                 "endpoint" -> { lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..." }
