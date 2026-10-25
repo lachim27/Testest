@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.11-safe-background-autoreservation"
+        versionCode = 10
+        versionName = "0.12-custom-hourly-limit"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
