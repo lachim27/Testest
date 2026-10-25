@@ -138,3 +138,16 @@ test('Captured exam request is handed to native reader before readiness', async 
   assert.equal(captured.headers['content-type'], 'application/json');
   assert.ok(f.events.indexOf(captured) < f.events.findIndex(x => x.kind === 'ready'));
 });
+
+test('Native query can be exported again without an HTTP read or quota request', async () => {
+  const f = fixture(async () => response(201, {id: bookingId}));
+  assert.equal(f.window.__zlapExportNativeRequest(), false);
+  await f.loginByOpeningExamList();
+  const callsBefore = f.calls.length;
+  const requestsBefore = f.events.filter(x => x.kind === 'request').length;
+  const exportsBefore = f.events.filter(x => x.kind === 'native_request_ready').length;
+  assert.equal(f.window.__zlapExportNativeRequest(), true);
+  assert.equal(f.calls.length, callsBefore);
+  assert.equal(f.events.filter(x => x.kind === 'request').length, requestsBefore);
+  assert.equal(f.events.filter(x => x.kind === 'native_request_ready').length, exportsBefore + 1);
+});

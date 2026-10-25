@@ -28,6 +28,26 @@ class NativeExamReaderTest {
         assertNull(NativeExamReader.capture(query().put("body", """{"organizationId":22,"category":"A"}""")))
     }
 
+    @Test fun acceptsPluralNestedAndQueryStringRoutes() {
+        for (path in listOf("OneCenterExams", "word-centers/exam-schedules/oneCenterExams",
+                "word-centers/21/exam-schedules/OneCenterExams/", "getOneCenterExams")) {
+            val address = url.substringBeforeLast('/') + "/" + path + "?page=1"
+            val request = NativeExamReader.capture(query(address))
+            assertNotNull(address, request)
+            assertEquals(address, request!!.url)
+        }
+        val arrayBody = """{"organizationId":[21],"category":5}"""
+        assertNotNull(NativeExamReader.capture(query(url + "s").put("body", arrayBody)))
+    }
+
+    @Test fun routeVariantsNeverPermitWriteOperationsOrUnrelatedApi() {
+        for (path in listOf("Reservations/OneCenterExams", "create/OneCenterExams",
+                "OneCenterExams/create", "pkz/get_profiles_for_reservation",
+                "../OneCenterExams", "%2e%2e/OneCenterExams", "createOneCenterExams")) {
+            assertNull(path, NativeExamReader.capture(query(url.substringBeforeLast('/') + "/" + path)))
+        }
+    }
+
     @Test fun parsesTermsWithoutAnyWebViewCallback() {
         val body = """{"examCollectionForDay":[{"examCollections":[
           {"examType":"Practice","category":"B","organizationId":21,"practiceId":"valid","practiceDateTime":"2026-11-02T11:00:00","placePracticeAmount":2},

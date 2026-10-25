@@ -48,6 +48,8 @@ class SlotMonitor(
     private var nativeRequest: NativeExamReader.Request? = null
     private var nativeReadBusy = false
     private var nativeRequestVersion = 0L
+    private var lastNativeExportAt = 0L
+    private var nativeSetupIssue = "Brak zapytania do odczytu w tle. Otwórz listę terminów w Portalu."
     private var strikes = prefs.getInt("strikes", 0)
     private val hourMs = 60 * 60 * 1000L
     private val effectiveSeconds: Int get() = ((effectiveMs + 999L) / 1000L).toInt().coerceAtLeast(1)
@@ -256,7 +258,11 @@ class SlotMonitor(
         if (nativeRequest != null) return startNativeRead()
         // Fail visibly rather than starting a WebView fetch that can freeze
         // when the screen locks. Opening the exam list captures the query.
-        diagnostics = "Otwórz listę terminów w Portalu, aby przygotować odczyt w tle."
+        diagnostics = nativeSetupIssue
+        if (now - lastNativeExportAt >= 30_000L) {
+            lastNativeExportAt = now
+            web.evaluateJavascript("Boolean(window.__zlapExportNativeRequest && window.__zlapExportNativeRequest());", null)
+        }
         return false
     }
 
@@ -520,6 +526,7 @@ class SlotMonitor(
             sessionExpired -> "Sesja portalu wygasła. Zaloguj się ponownie w zakładce Portal."
             now < blockedUntil -> "Wstrzymano po limicie HTTP 429 do " + clock(blockedUntil)
             !requestReady -> diagnostics
+            nativeRequest == null -> nativeSetupIssue
             lastError.isNotEmpty() -> lastError
             lastCheckedAt == 0L -> "Połączono z listą egzaminów. Oczekiwanie na pierwszy odczyt."
             else -> "Ostatni odczyt: " + clock(lastCheckedAt) +
@@ -537,9 +544,15 @@ class SlotMonitor(
             val message = JSONObject(raw)
             when (message.optString("kind")) {
                 "native_request_ready" -> {
-                    nativeRequestVersion++
-                    nativeRequest = NativeExamReader.capture(message)
-                    if (nativeRequest == null) diagnostics = "Nieobsługiwane zapytanie do odczytu w tle."
+                    val captured = NativeExamReader.capture(message)
+                    if (captured != nativeRequest) nativeRequestVersion++
+                    nativeRequest = captured
+                    nativeSetupIssue = if (captured != null) "" else {
+                        // Only the path, never query parameters, PKK or headers.
+                        val path = runCatching { java.net.URL(message.optString("url")).path }.getOrDefault("")
+                        "Odczyt w tle odrzucił format zapytania API: " + path.take(160)
+                    }
+                    diagnostics = if (captured != null) "Odczyt w tle gotowy." else nativeSetupIssue
                 }
                 "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
                 "candidate" -> { if (!requestReady) diagnostics = "Wykryto ścieżkę API: " + message.optString("path").take(100) + ". Sprawdzanie zgodności..." }

@@ -67,3 +67,6 @@ Odstęp pomiędzy automatycznymi odczytami i ewentualna blokada HTTP 429 nadal o
 Automatyczne zapytania o terminy i analiza odpowiedzi działają natywnie na wątku Androida, bez oczekiwania na zakończenie JavaScript fetch w WebView. Po aktualizacji otwórz listę terminów w Portalu raz, aby przygotować zapytanie do powtarzania. Timeouty połączenia i odpowiedzi wynoszą po 15 sekund; osobny natywny deadline rozłącza odczyt po 45 sekundach. Jednocześnie może działać jeden odczyt automatyczny; limity i HTTP 429 nadal obowiązują.
 
 Sama rezerwacja pozostaje w WebView, z dotychczasową ochroną przed ponawianiem niepewnych operacji. Odczyty nie oznaczają gwarancji działania po zabiciu procesu przez Androida. Zachowanie konkretnego telefonu przy zablokowanym ekranie wymaga sprawdzenia na urządzeniu.
+
+## Przywrócenie automatu po v0.15 (0.16)
+Walidacja odczytu natywnego przyjmuje również zagnieżdżone i mnogie nazwy endpointu OneCenterExams. Zapytania do rezerwacji i operacji zapisu pozostają wykluczone. Jeśli przekazanie zapytania nie dotarło do odczytu natywnego, aplikacja ponawia je lokalnie (bez kolejnego żądania HTTP i bez zużycia limitu). Status rozróżnia gotowość Portalu od gotowości odczytu w tle. Przy odrzuceniu formatu wyświetla samą ścieżkę API bez parametrów ani danych osobowych.

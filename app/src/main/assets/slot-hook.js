@@ -42,6 +42,14 @@
       return orgOK && (Number(b.category) === 5 || String(b.category).toUpperCase() === 'B');
     } catch (_) { return false; }
   }
+  // Local replay only: no extra HTTP request and no quota consumption.
+  window.__zlapExportNativeRequest = function () {
+    if (!saved) return false;
+    var nativeHeaders = {};
+    try { new Headers(saved.headers).forEach(function(value, key) { nativeHeaders[key] = value; }); } catch (_) {}
+    send({kind:'native_request_ready', url:saved.url, body:saved.body, headers:nativeHeaders});
+    return true;
+  };
   function remember(url, body, originalHeaders, originalCredentials) {
     if (!isTarget(url)) return false;
     send({kind:'endpoint'});
@@ -69,9 +77,7 @@
     };
     // In-memory handoff: Android performs automatic reads without waiting for
     // background WebView fetch promises or JavaScript timeout callbacks.
-    var nativeHeaders = {};
-    try { new Headers(headers).forEach(function(value, key) { nativeHeaders[key] = value; }); } catch (_) {}
-    send({kind:'native_request_ready', url:resolved, body:body, headers:nativeHeaders});
+    window.__zlapExportNativeRequest();
     hadAuthenticatedRequest = true;
     if (!wasReady) send({kind: 'ready'});
     return true;

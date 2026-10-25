@@ -17,12 +17,23 @@ internal object NativeExamReader {
         Thread(task, "exam-read-deadline").apply { isDaemon = true }
     }
 
+    /** The portal uses nested/plural OneCenterExams routes as well as the
+     * singular route. Keep the API/operation allowlist, not one invented URL. */
+    internal fun isExamListPath(path: String): Boolean {
+        if (!Regex("^/bknd/exam/api/v[0-9]+/", RegexOption.IGNORE_CASE).containsMatchIn(path)) return false
+        val segments = path.trimEnd('/').split('/')
+        if (segments.any { it == "." || it == ".." || it.contains('%') }) return false
+        if (segments.any { Regex("reservation|create|confirm|cancel|delete|payment|update|book", RegexOption.IGNORE_CASE).containsMatchIn(it) }) return false
+        return Regex("^(?:get[-_]?)?onecenterexams?$", RegexOption.IGNORE_CASE)
+            .matches(segments.last())
+    }
+
     fun capture(message: JSONObject): Request? = try {
         val url = URL(message.getString("url"))
         val validHost = url.host == "info-kierowca.pl" || url.host.endsWith(".info-kierowca.pl")
         if (url.protocol != "https" || !validHost || url.userInfo != null ||
             (url.port != -1 && url.port != 443) ||
-            !Regex("^/bknd/exam/api/v[0-9]+/OneCenterExam/?$", RegexOption.IGNORE_CASE).matches(url.path)) null
+            !isExamListPath(url.path)) null
         else {
             val body = message.getString("body")
             val data = JSONObject(body)
