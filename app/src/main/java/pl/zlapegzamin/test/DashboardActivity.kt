@@ -74,11 +74,12 @@ class DashboardActivity : Activity() {
         if (!::monitor.isInitialized || tab != "start") return
         val now = System.currentTimeMillis()
         val count = monitor.searchesThisHour
+        val hourlyLimit = monitor.maxRequestsPerHour
         val formatter = SimpleDateFormat("HH:mm:ss", Locale("pl", "PL"))
         fun time(at: Long) = formatter.format(java.util.Date(at))
         liveStatusView?.text = monitor.status()
         liveCountView?.text = "Zapytania w ostatnich 60 minutach: " + count +
-            " (próg automatycznego sprawdzania: 4)"
+            " (limit automatyczny: " + hourlyLimit + ")"
         val first = monitor.nextCountDecreaseAt
         val last = monitor.allCountedRequestsExpireAt
         liveExpiryView?.text = if (count == 0) {
@@ -94,8 +95,9 @@ class DashboardActivity : Activity() {
             blocked > now -> "Blokada HTTP 429 do " + time(blocked) + "."
             quota > now -> "Automat czeka na zwolnienie limitu do " + time(quota) +
                 ". Ręczne sprawdzenie i odczyt w Portalu również liczą się do limitu."
-            count >= 4 -> "Limit automatu 4 na 60 minut osiągnięty."
-            else -> "W limicie lokalnym pozostało " + (4 - count) +
+            count >= hourlyLimit -> "Osiągnięto ustawiony limit automatu: " +
+                hourlyLimit + " zapytań na 60 minut."
+            else -> "W limicie lokalnym pozostało " + (hourlyLimit - count) +
                 " automatycznych zapytań w obecnym oknie."
         }
     }
@@ -884,8 +886,8 @@ class DashboardActivity : Activity() {
         put(frequency, text("Interwał bazowy: " + monitor.intervalSeconds + " s. " +
             "Minimalna przerwa: " + monitor.minimumAutoGapSeconds + " s. " +
             "Rzeczywisty odstęp to dłuższa z tych wartości. " +
-            "Limit bezpieczeństwa nadal wynosi 4 odczyty na godzinę; " +
-            "HTTP 429 może dodatkowo wydłużyć oczekiwanie.", 14f, muted), 12)
+            "Ustawiony limit automatyczny: " + monitor.maxRequestsPerHour +
+            " zapytań na 60 minut. HTTP 429 może wydłużyć oczekiwanie.", 14f, muted), 12)
         for (seconds in listOf(30, 60, 300, 900, 1800)) {
             put(frequency, action("$seconds sekund", monitor.intervalSeconds == seconds) {
                 monitor.setInterval(seconds)
@@ -913,7 +915,7 @@ class DashboardActivity : Activity() {
         put(minGap, text("MINIMALNY ODSTĘP AUTOMATU", 12f, blue, true), 12)
         put(minGap, text("Fabrycznie: 15 minut (900 sekund). " +
             "Możesz ustawić krótszą lub dłuższą przerwę. " +
-            "Nie zmienia to ograniczeń serwera ani limitu 4 prób na godzinę.",
+            "Limit godzinowy ustawisz poniżej. Ograniczenia serwera pozostają niezależne.",
             14f, muted), 12)
         put(minGap, text("Obecnie: " + monitor.minimumAutoGapSeconds + " sekund", 17f, ink, true), 12)
         for (seconds in listOf(30, 60, 120, 300, 600, 900, 1800, 3600)) {
@@ -947,13 +949,56 @@ class DashboardActivity : Activity() {
         })
         put(page, minGap, 19)
 
+        val hourly = card()
+        put(hourly, text("MAKSYMALNA LICZBA ZAPYTAŃ NA GODZINĘ",
+            12f, blue, true), 12)
+        put(hourly, text("Ustawiony limit automatu: " +
+            monitor.maxRequestsPerHour + " zapytań na 60 minut (fabrycznie 4).",
+            16f, ink, true), 10)
+        put(hourly, text("Możesz ustawić dowolną dodatnią liczbę całkowitą. " +
+            "Zmiana dotyczy tylko ograniczenia ZłapEgzamin — nie zmienia limitów " +
+            "portalu info-kierowca.pl ani blokady HTTP 429. " +
+            "Dotychczasowe zapytania pozostają w liczniku przez 60 minut.",
+            13f, muted), 11)
+        val hourlyLimitField = EditText(this).apply {
+            hint = "Np. 6, 10, 12, 24..."
+            setText(monitor.maxRequestsPerHour.toString())
+            setTextColor(ink)
+            setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            background = round(paleBlue, 12)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        put(hourly, hourlyLimitField, 9)
+        put(hourly, action("Zapisz limit na godzinę") {
+            val entered = hourlyLimitField.text.toString().trim().toIntOrNull()
+            if (entered == null || entered <= 0 || !monitor.setMaxRequestsPerHour(entered)) {
+                Toast.makeText(this,
+                    "Podaj liczbę całkowitą większą od 0.", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Limit automatu: " + entered +
+                    " zapytań/60 min.", Toast.LENGTH_SHORT).show()
+                refreshSettingsAtSamePosition()
+            }
+        }, 8)
+        put(hourly, action("Przywróć fabryczny limit: 4", false) {
+            monitor.setMaxRequestsPerHour(4)
+            refreshSettingsAtSamePosition()
+        }, 8)
+        put(hourly, text("Jeśli ustawisz więcej niż 4, żeby zwiększyć częstotliwość " +
+            "sprawdzania, dostosuj również minimalny odstęp automatu powyżej. " +
+            "Zbyt częste zapytania mogą spowodować HTTP 429.",
+            12f, muted), 5)
+        put(page, hourly, 19)
+
         val debug = card()
         put(debug, text("DIAGNOSTYKA POŁĄCZENIA", 12f, Color.rgb(143, 182, 255), true), 12)
         put(debug, text(monitor.diagnostics, 14f, muted), 12)
         put(debug, text("Ostatni błąd: " + monitor.lastError.ifBlank { "brak" }, 13f, muted), 12)
         put(debug, text("Ostatni udany odczyt: " + (if (monitor.lastCheckedAt > 0L) java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale("pl", "PL")).format(java.util.Date(monitor.lastCheckedAt)) else "brak"), 13f, muted), 12)
         put(debug, text("Zapytania w ostatnich 60 minutach: " +
-            monitor.searchesThisHour + " (próg automatu: 4)", 13f, muted), 10)
+            monitor.searchesThisHour + " (limit automatu: " +
+            monitor.maxRequestsPerHour + ")", 13f, muted), 10)
         put(debug, text("Blokada HTTP 429: " +
             (if (monitor.blockedUntil > System.currentTimeMillis())
                 SimpleDateFormat("dd.MM HH:mm", Locale("pl", "PL")).format(java.util.Date(monitor.blockedUntil))
@@ -963,7 +1008,8 @@ class DashboardActivity : Activity() {
                 "Status: " + monitor.status() + "\\n" +
                 "Diagnostyka: " + monitor.diagnostics + "\\n" +
                 "Błąd: " + monitor.lastError + "\\n" +
-                "HTTP/h: " + monitor.searchesThisHour
+                "HTTP/h: " + monitor.searchesThisHour +
+                " / ustawiony limit automatu: " + monitor.maxRequestsPerHour
             val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("ZłapEgzamin diagnostyka", report))
             Toast.makeText(this, "Skopiowano diagnostykę bez danych logowania", Toast.LENGTH_LONG).show()
