@@ -772,6 +772,13 @@
       report('Przerwano na etapie rezerwacji lub płatności.');
       return;
     }
+    // Info-Kierowca can fetch term slots already when "all exam types"
+    // is selected. Even if the page contains dates, the four-radio screen
+    // MUST be handled first; capturing/reading terms does not complete it.
+    if (practicalRadioScreen(body) && !practicalRadioVerified()) {
+      choosePracticalExamRadio();
+      return;
+    }
     if (resultsShown()) {
       stopped = true;
       report('Lista terminów otwarta. Monitor może przejąć odczyt.');
@@ -1245,8 +1252,20 @@
   }
   window.__zlapFormPrep = {configure:configure, scan:scan, bookUi:bookUi,
     diagnose:diagnose, retry:retry, stop:function () {
+    // Defensive check: third-party/native signals must never prematurely
+    // stop form preparation while the practical radio is still missing.
+    var body = norm(document.body && document.body.innerText || '');
+    if (practicalRadioScreen(body) && !practicalRadioVerified()) {
+      report('Wstrzymano zakończenie automatu: na formularzu nie wybrano praktycznego.');
+      return false;
+    }
+    if (!resultsShown()) {
+      report('Nie zatrzymuję formularza: nie rozpoznano gotowej listy terminów.');
+      return false;
+    }
     stopped = true;
     report('Lista terminów przejęta przez monitor.');
+    return true;
   }};
   document.addEventListener('DOMContentLoaded', scan);
   window.setInterval(scan, 2000);
