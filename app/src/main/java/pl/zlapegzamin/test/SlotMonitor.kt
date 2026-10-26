@@ -161,7 +161,7 @@ class SlotMonitor(
                 val fields = data.optJSONObject("fields") ?: JSONObject()
                 val controls = data.optJSONObject("controls") ?: JSONObject()
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.24\n" +
+                val report = "Automat formularza ZłapEgzamin 0.25\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -188,6 +188,8 @@ class SlotMonitor(
                         ", inne=" + otherTags.optInt("other") + "\n" +
                     "Ramki strony: " + data.optInt("embeddedFrames") +
                         ", Shadow DOM: " + data.optInt("shadowHosts") + "\n" +
+                    "Menu usług otwarto automatycznie: " +
+                        data.optBoolean("menuOpened") + "\n" +
                     "Tekst zakładki w menu: " +
                         (if (data.optBoolean("menuTextVisible")) "widoczny" else "nie wykryto") + "\n" +
                     "Etap: " + data.optString("last").take(180) + "\n" +
