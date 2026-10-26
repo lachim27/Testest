@@ -120,7 +120,7 @@ test('after consent a blank start-date field is filled without booking a slot',(
   setup(window,document,location,()=>({display:'block',visibility:'visible'}),
     {escape:x=>x},class {constructor(type){this.type=type;}},class {});
   window.__zlapFormPrep.configure({enabled:true});
-  assert.match(field.value,/^\\d{4}-\\d{2}-\\d{2}$/);
+  assert.match(field.value, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/);
   assert.deepEqual(clicks,['input','change']);
 });
 
