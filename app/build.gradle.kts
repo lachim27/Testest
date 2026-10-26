@@ -10,7 +10,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.25-hamburger-pkk-form"
+        versionName = "0.26-home-menu-detection"
     }
     val signingFile = System.getenv("ZLAP_KEYSTORE")
     if (!signingFile.isNullOrBlank()) {
