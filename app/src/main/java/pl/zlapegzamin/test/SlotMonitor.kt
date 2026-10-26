@@ -162,7 +162,8 @@ class SlotMonitor(
                 val controls = data.optJSONObject("controls") ?: JSONObject()
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.28\n" +
+                val nextDiag = data.optJSONObject("nextDiagnostics") ?: JSONObject()
+                val report = "Automat formularza ZłapEgzamin 0.29\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -204,6 +205,14 @@ class SlotMonitor(
                     "Tryb konkretnego WORD: " + steps.optBoolean("specificWord") +
                         ", Kraków Nowohucka: " + steps.optBoolean("centerNowohucka") +
                         ", Następny: " + steps.optBoolean("nextStep") + "\n" +
+                    "Pierwszy etap formularza rozpoznany: " +
+                        nextDiag.optBoolean("firstStage") +
+                        ", wymagane wybory gotowe: " +
+                        nextDiag.optBoolean("profileAndWordReady") + "\n" +
+                    "Przycisk Następny — wykryte: " +
+                        nextDiag.optInt("rawCandidates") +
+                        ", aktywne: " + nextDiag.optInt("enabledCandidates") +
+                        ", nieaktywne: " + nextDiag.optInt("disabledCandidates") + "\n" +
                     "Tekst zakładki w menu: " +
                         (if (data.optBoolean("menuTextVisible")) "widoczny" else "nie wykryto") + "\n" +
                     "Etap: " + data.optString("last").take(180) + "\n" +
