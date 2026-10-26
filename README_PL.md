@@ -106,3 +106,11 @@ Wersja 0.20 mogła nie uruchamiać przygotowania formularza automatycznie (opcja
 **Instalacja jako aktualizacja:** release 0.21 używa tego samego sekretu podpisu i identyfikatora pakietu co stabilna 0.20 i 0.19. Android pozwala aktualizować je bez odinstalowywania. Jeżeli jednak na telefonie znajduje się starszy wariant podpisany innym kluczem debugowym, bez oryginalnego klucza Android **nie pozwoli** go nadpisać żadną poprawnie podpisaną aktualizacją. To wymaganie Androida, którego aplikacja nie może ominąć. Można zachować starą instalację osobno albo jednorazowo wykonać reinstalację po zabezpieczeniu ustawień i sprawdzeniu ewentualnych rezerwacji. Kolejne stabilne wydania aktualizują się normalnie.
 
 Wybór formularza odbywa się poprzez kontrolki widoczne w portalu, więc przy nowym widoku/niejednoznacznym PKK konieczne może być dopasowanie na podstawie zrzutu ekranu *bez wrażliwych danych*. Obsługa prawdziwego portalu wymaga testu na zalogowanej sesji; lokalne testy nie potwierdzają całego przebiegu.
+
+## Wersja 0.22 — diagnostyka niedziałającego automatu
+
+Jeśli po zalogowaniu monitor nadal nie widzi listy terminów, otwórz **Opcje → Automatyczne przygotowanie formularza → Ponów wybór formularza automatycznie**, a następnie **Opcje → Diagnostyka → Kopiuj raport automatu formularza (bez PKK)**. Wklej raport do rozmowy. Pokazuje, czy skrypt został uruchomiony i czy rozpoznał przyciski/pola, bez ujawniania numeru PKK, sesji, ciasteczek ani danych osobowych. Nic nie wysyła do zewnętrznych serwerów.
+
+Naprawiono zatrzymywanie automatu przez sam link „Opłać egzamin” w menu portalu (nie jest to jeszcze ekran płatności). Przy aktualizacji z 0.19–0.21 jednorazowo migracja uruchamia automatyczne przygotowanie formularza, ponieważ wcześniejsza opcja była zapisywana jako wyłączona nawet po zmianie jej domyślnej wartości. Później można ją wyłączyć na stałe.
+
+Automat nadal nie gwarantuje działania przy nieznanym układzie interfejsu zalogowanego portalu. Bez diagnostyki z realnego ekranu nie należy twierdzić, że wybór PKK/ośrodka działa u każdego. Jeśli formularz ma kilka profili PKK, automat powinien wymagać decyzji użytkownika. Podpis wersji 0.22 pozostaje ten sam co podpis 0.19–0.21.
