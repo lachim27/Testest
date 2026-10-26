@@ -923,7 +923,9 @@
     bookingUiReport('booking_ui_advanced','Kliknięto Potwierdź i przejdź dalej; stan rezerwacji wymaga sprawdzenia.');
   }
   function bookUi(practiceId,iso,dateFrom,dateTo,hourFrom,hourTo) {
-    if (!settings.enabled || !allowed() || bookingUi || !document.body) return false;
+    // Explicit native autoReserve opt-in controls this call; the optional
+    // form-preparation toggle is independent.
+    if (!allowed() || bookingUi || !document.body) return false;
     if (typeof practiceId!=='string' || !/^[A-Za-z0-9_-]{1,90}$/.test(practiceId))
       return false;
     var target=bookingUiDate(iso);
@@ -1040,6 +1042,7 @@
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
+      bookingUiStage:bookingUi ? (bookingUi.done ? 'zakończony' : bookingUi.stage) : 'nieuruchomiony',
       nextDiagnostics:{
         firstStage:firstStage,
         rawCandidates:nextRaw.length,
