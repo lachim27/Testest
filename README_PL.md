@@ -166,3 +166,11 @@ Użytkownik potwierdził, że po wyborze PKK portal sam ustawia kategorię B. W 
 Wersja 0.28 **nie zmienia kategorii w formularzu ani nie otwiera ponownie jej listy**. Jeśli wartość jest dostępna w DOM, odczytuje ją wyłącznie kontrolnie i blokuje przejście tylko wtedy, gdy wykryta jest jawnie inna kategoria niż B. Jeśli portal nie ujawnia jej wartości w kontrolce, ufa istniejącemu ustawieniu portalu (zgodnie z zachowaniem zgłoszonym przez użytkownika) i nie wymaga już samodzielnego wybrania kategorii przed Następny. Raport rozróżnia B odczytana, wartość nieodczytana (bez zmiany) oraz inna kategoria. W dalszym ciągu przed Następny wymagane są wybrany PKK, numer profilu, tryb konkretnego WORD-u oraz ośrodek Kraków Nowohucka.
 
 Wszystkie 35 testów JS w symulowanym DOM przeszło. Odczyt nie przesyła numeru PKK ani innej wartości profilu poza WebView. Nie rezerwuje terminu ani nie dokonuje płatności. Realny przebieg formularza po logowaniu wymaga sprawdzenia na telefonie.
+
+## 0.29 — przycisk „Następny →” z ikoną strzałki
+
+W 0.28 raport użytkownika pokazywał: wybrany PKK, numer profilu, tryb konkretnego WORD-u i Kraków Nowohucka, ale „Następny: false” i „dalej=0”. Na przesłanym wcześniej zrzucie przycisk nosi etykietę **„Następny →”**, natomiast skrypt rozpoznawał tylko dokładny tekst „Następny”. W 0.29 rozpoznaje również opcjonalny symbol strzałki lub tekst ikony Material po właściwej nazwie. Nie rozpoznaje podobnych poleceń rezerwacji i nie uruchamia się na ekranach płatności ani potwierdzenia.
+
+Przed kliknięciem nadal konieczne jest wybranie PKK, numeru profilu, konkretnego WORD-u i centrali Nowohucka oraz brak jawnie odmiennej kategorii niż B. W diagnostyce są nowe pola: **Pierwszy etap formularza rozpoznany**, **Wymagane wybory gotowe**, oraz liczba **przycisków Następny wykrytych / aktywnych / nieaktywnych**, bez wartości danych osobowych lub PKK. Testy JS: 39/39, w tym symulowane przejście z tekstem „Następny →”.
+
+Testy symulowane nie zastępują testowania rzeczywistego widoku po zalogowaniu. Jeżeli nadal stoi w miejscu, poproś o raport tych nowych trzech wskaźników lub screenshot z zasłoniętymi danymi.
