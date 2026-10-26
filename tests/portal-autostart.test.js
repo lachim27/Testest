@@ -662,9 +662,9 @@ test('follows PKK -> single profile -> B -> explicit WORD -> Krakow Nowohucka ->
   };
   const next={
     tagName:'BUTTON',nodeType:1,isConnected:true,disabled:false,parentElement:null,
-    innerText:'Następny',textContent:'Następny',
+    innerText:'Następny →',textContent:'Następny →',
     getAttribute(){return null;},getClientRects(){return [1];},
-    click(){clicked.push('Następny');}
+    click(){clicked.push('Następny →');}
   };
   const body={innerText:'Wybór rodzaju profilu. PKK - Profil kandydata na kierowcę (PKK). '+
     'Wybór numeru profilu i kategorii. Numer profilu. Kategoria. '+
@@ -692,7 +692,7 @@ test('follows PKK -> single profile -> B -> explicit WORD -> Krakow Nowohucka ->
   );
   wnd.__zlapFormPrep.configure({enabled:true});
   for(let i=0;i<9;i++){tick+=1900;wnd.__zlapFormPrep.scan();}
-  assert.deepEqual(clicked,['PKK','WORD mode','Kraków Nowohucka','Następny']);
+  assert.deepEqual(clicked,['PKK','WORD mode','Kraków Nowohucka','Następny →']);
   assert.equal(profile.value,'one');
   assert.equal(category.value,'B');
 });
@@ -801,4 +801,34 @@ test('category B preset on a custom combobox is read without a click',()=>{
   );
   wnd.__zlapFormPrep.configure({enabled:true});
   assert.equal(wnd.__zlapFormPrep.diagnose().setupSteps.categoryB,true);
+});
+
+
+test('diagnostics recognize screenshot Następny → as wizard next',()=>{
+  const f=fixture('Wybór rodzaju profilu. Wybór ośrodka egzaminacyjnego WORD',
+    ['Następny →']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  const report=f.window.__zlapFormPrep.diagnose();
+  assert.equal(report.controls.next,1);
+  assert.equal(report.nextDiagnostics.firstStage,true);
+  assert.equal(report.nextDiagnostics.rawCandidates,1);
+  assert.equal(report.nextDiagnostics.enabledCandidates,1);
+  assert.equal(report.nextDiagnostics.disabledCandidates,0);
+  // Incomplete profile and center selections forbid navigating away.
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('do not click disabled Następny → even if fields were selected',()=>{
+  const f=fixture('Wybór rodzaju profilu. Wybór ośrodka egzaminacyjnego WORD',
+    ['Następny →']);
+  // Fixture has no current selections and must never click automatically.
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('do not confuse Następny reservation confirmation with wizard navigation',()=>{
+  const f=fixture('Podsumowanie rezerwacji. Potwierdzenie rezerwacji',
+    ['Następny →','Potwierdź rezerwację']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
 });
