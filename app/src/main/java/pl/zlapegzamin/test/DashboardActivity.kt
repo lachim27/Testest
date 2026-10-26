@@ -815,9 +815,9 @@ class DashboardActivity : Activity() {
         put(page, dates, 19)
 
         val prep = card()
-        put(prep, text("AUTOMATYCZNE PRZYGOTOWANIE FORMULARZA", 12f, blue, true), 12)
+        put(prep, text("AUTOMATYCZNE OTWIERANIE LISTY TERMINÓW", 12f, blue, true), 12)
         put(prep, text(
-            "Po Twoim zalogowaniu aplikacja spróbuje wybrać PKK, MORD Kraków, " +
+            "Po zalogowaniu otworzy Zarezerwuj termin egzaminu, wybierze MORD Kraków, PKK, " +
                 "kategorię B i praktykę, a następnie otworzyć listę terminów. " +
                 "W 0.22 przygotowanie jest włączone automatycznie także po aktualizacji. " +
                 "Nie loguje się za Ciebie, nie zatwierdza miejsca ani płatności. " +
