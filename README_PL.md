@@ -138,3 +138,15 @@ Po zalogowaniu w telefonie widoczna jest **strona „Moje wnioski i rezerwacje�
 W 0.25 automat próbuje najpierw bezpiecznie rozpoznać przycisk ☰ i otworzyć menu usług, następnie kliknąć jednoznaczny kafelek „Zarezerwuj termin egzaminu”. Rozpoznaje również zaznaczoną już opcję PKK oraz rozwijane listy (Angular Material / MUI / PrimeNG i natywne). Jeśli na liście profili jest więcej niż jeden kandydat lub portal zmieni widok, **nie zgaduje numeru**. Nie klika dostępnej godziny, nie składa rezerwacji i nie płaci.
 
 Zaktualizowano raport diagnostyczny o informację, czy automat otworzył menu usług. Uruchomiono 25 testów symulowanego DOM — **to nie zastępuje próby w zalogowanym Portalu**. Jeśli helper nadal stoi w miejscu, należy przesłać raport bez PKK lub zrzut interfejsu z ukrytymi danymi osobowymi. Screenshots, PKK i ciasteczka sesji nie są przechowywane w publicznym repozytorium.
+
+## 0.26 — brak wykrycia ikony ☰ po zalogowaniu
+
+Raport z rzeczywistego Androida dla 0.25 potwierdził: skrypt aktywny, **0 kliknięć**, 0 elementów „Zarezerwuj termin egzaminu”, 1 nierozpoznana kontrolka typu combobox (prawdopodobnie filtr „Status” na ekranie „Moje wnioski i rezerwacje”), brak iframes i Shadow DOM, nie otwarto menu. To nie jest dowód awarii modułu autorezerwacji — problem powstaje wcześniej, podczas przejścia do wyszukiwarki terminów.
+
+W 0.26 rozszerzono wykrywanie ikony menu ☰:
+- Warunek aktywności ograniczony do **rzeczywiście rozpoznanej strony głównej „Moje wnioski i rezerwacje”**, a nie samego stałego nagłówka „Portal E-usług”.
+- Wykrywanie przycisków z tekstowym oznaczeniem Menu i SVG z trzema poziomymi kreskami.
+- Zapasowe rozpoznawanie kompaktowego elementu z obsługą kliknięcia w **lewym górnym rogu WebView** na dokładnie tej stronie. Jest to zgodne z przesłanym widokiem; na innych ekranach metoda nie jest wykonywana.
+- Raport anonimowy podaje **Rozpoznano stronę główną: true/false** oraz **Ikony menu ☰ w lewym górnym rogu: liczba**. Nie zbiera numeru PKK, nazwiska, cookies ani wartości pól.
+
+Zachowany stały podpis release, ten sam identyfikator aplikacji, limit zapytań i zakaz potwierdzania terminu lub opłaty przez moduł przygotowania. Testy 29/29 w symulowanym DOM. Ostateczny test wymaga zalogowanego telefonu.
