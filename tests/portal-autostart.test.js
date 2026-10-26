@@ -867,7 +867,7 @@ test('diagnostics expose disabled Następny without clicking it',()=>{
 // 0.30: matching the screenshots: 17/12/2026 06:00, 4 free places,
 // followed by the "Potwierdź wybrany egzamin" dialog.
 function reservationScreen({wrongDay=false,wrongHour=false,wrongCategory=false,
-  noPlaces=false,wrongModal=false,extraCard=false,afterConfirm=false}={}) {
+  noPlaces=false,wrongModal=false,extraCard=false,collapsed=false}={}) {
   const events=[],clicks=[];
   let modalVisible=false;
   function item(tag,txt) {
@@ -896,7 +896,10 @@ function reservationScreen({wrongDay=false,wrongHour=false,wrongCategory=false,
   const confirm=item('BUTTON','Potwierdź i przejdź dalej');
   confirm.click=function(){clicks.push('modal confirm');};
   modal.querySelectorAll=function(q){return q==='button, [role="button"]'?[confirm]:[];};
-  const all=[previous,otherCard,targetDay,card];
+  let expanded=!collapsed;
+  targetDay.click=function(){clicks.push('date section');expanded=true;};
+  const all=[previous,otherCard,targetDay];
+  if(expanded) all.push(card);
   if(extraCard) {
     const duplicate=item('DIV',card.innerText);
     duplicate.querySelectorAll=function(){return [radio];};
@@ -905,7 +908,7 @@ function reservationScreen({wrongDay=false,wrongHour=false,wrongCategory=false,
   const doc={body:{innerText:'Dostępne terminy egzaminów - 17/12/2026'},
     documentElement:null,addEventListener(){},querySelector(){return null;},
     querySelectorAll(q){
-      if(q==='*') return all;
+      if(q==='*') return expanded && !all.includes(card) ? all.concat([card]) : all;
       if(q==='[role="dialog"], [aria-modal="true"], .MuiDialog-paper, .mat-dialog-container, .modal-dialog')
         return modalVisible ? [modal] : [];
       return [];
@@ -978,4 +981,14 @@ test('booking UI translates ISO Z offset into local Warsaw time',()=>{
   assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T05:00:00Z',
     '2026-12-01','2026-12-30','06:00','12:00'),true);
   assert.deepEqual(f.clicks,['card radio','modal confirm']);
+});
+
+
+test('booking UI expands exact December 17 heading before selecting 06:00',()=>{
+  const f=reservationScreen({collapsed:true});
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),true);
+  assert.deepEqual(f.clicks,['date section','card radio','modal confirm']);
+  assert.ok(f.events.some(x=>x.kind==='booking_ui_expanding'));
+  assert.ok(f.events.some(x=>x.kind==='booking_ui_advanced'));
 });
