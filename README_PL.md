@@ -88,3 +88,11 @@ W **Opcje → Automatyczne przygotowanie formularza** można włączyć pomocnik
 Automat jest domyślnie **wyłączony**. Jeśli portal pokazuje kilka PKK, niejednoznaczne elementy albo zmienił interfejs, pomaga tylko częściowo: sprawdź zakładkę **Portal** i wybierz pozostałe opcje ręcznie. Status działania jest widoczny w Opcjach. Nie gwarantujemy działania na każdej wersji portalu: nie mamy dostępu do prywatnego widoku zalogowanego użytkownika. Do czasu sprawdzenia w realnej sesji to wersja testowa.
 
 To oddzielna opcja od **Autorezerwacji – zajęcie miejsca**. Nie zastępuje ustawień zakresu dat i godzin, limitów HTTP ani procesu opłacenia egzaminu.
+
+## Uruchamianie monitora po logowaniu (0.20)
+
+W zakładce **Opcje → Automatyczne przygotowanie formularza** włącz funkcję **raz**. Gdy monitor jest wyłączony, włączenie tej opcji włącza także monitor i jego usługę w tle. Otworzy się zakładka **Portal**. Zaloguj się samodzielnie przez wspieraną metodę uwierzytelniania.
+
+Po powrocie z logowania aplikacja podejmie próbę: **Zarezerwuj termin egzaminu → rodzaj profilu PKK → pojedynczy profil PKK → MORD Kraków → kategoria B → praktyczny → data od dziś (jeśli pusta) → wyszukiwanie terminów**. Kiedy oficjalny portal wykona pierwsze zapytanie o terminy, istniejący moduł monitorowania przejmie je i będzie prowadził kolejne sprawdzenia zgodnie z harmonogramem i limitem HTTP 429. Pomocnik **nie** wykonuje równolegle własnych zapytań o terminy.
+
+Automat nie loguje się za użytkownika, nie wybiera konkretnego terminu, nie zatwierdza rezerwacji i nie przechodzi do płatności. Przy kilku profilach PKK lub nieznanych polach wybór należy uzupełnić ręcznie. Portal jest aplikacją dynamiczną; automatyczny przebieg wymaga testu na rzeczywistej zalogowanej sesji i może przestać działać po zmianie portalu. Nie publikuj PKK ani danych logowania w diagnostyce.

@@ -825,8 +825,14 @@ class DashboardActivity : Activity() {
             else "Przygotowanie formularza: WYŁĄCZONE",
             monitor.portalFormPreparationEnabled
         ) {
-            monitor.setPortalFormPreparationEnabled(!monitor.portalFormPreparationEnabled)
-            refreshSettingsAtSamePosition()
+            val enablePreparation = !monitor.portalFormPreparationEnabled
+            if (enablePreparation && !monitor.enabled) {
+                monitor.setEnabled(true)
+                startBackgroundMonitor()
+            }
+            monitor.setPortalFormPreparationEnabled(enablePreparation)
+            if (enablePreparation) show("portal")
+            else refreshSettingsAtSamePosition()
         }, 10)
         put(prep, text("Status: " + monitor.portalFormPreparationStatus,
             13f, muted), 10)

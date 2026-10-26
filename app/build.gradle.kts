@@ -10,7 +10,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.19-form-preparation"
+        versionName = "0.20-monitor-autostart"
     }
     val signingFile = System.getenv("ZLAP_KEYSTORE")
     if (!signingFile.isNullOrBlank()) {

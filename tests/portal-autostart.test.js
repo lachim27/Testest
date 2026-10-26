@@ -92,3 +92,57 @@ test('disabling preparation makes the form untouched',()=>{
   f.window.__zlapFormPrep.configure({enabled:false});
   assert.deepEqual(f.clicked,[]);
 });
+
+test('after consent a blank start-date field is filled without booking a slot',()=>{
+  const clicks=[];
+  const field = {
+    isConnected:true, disabled:false, nodeType:1, parentElement:null,
+    id:'dateFrom', value:'', min:'2026-10-01', max:'', readOnly:false,
+    getClientRects(){return [1];},
+    getAttribute(key){return key==='aria-label'?'Data od':null;},
+    closest(){return null;},
+    dispatchEvent(e){clicks.push(e.type);}
+  };
+  const document = {
+    body:{innerText:'Rodzaj egzaminu: praktyczny, Data od'},
+    documentElement:null,
+    addEventListener(){},
+    querySelectorAll(selector) {
+      return selector==='input[type="date"]'?[field]:[];
+    },
+    querySelector(){return null;}
+  };
+  const window = {setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(){}}};
+  const location={protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'};
+  const setup=new Function('window','document','location','getComputedStyle',
+    'CSS','Event','MutationObserver',source);
+  setup(window,document,location,()=>({display:'block',visibility:'visible'}),
+    {escape:x=>x},class {constructor(type){this.type=type;}},class {});
+  window.__zlapFormPrep.configure({enabled:true});
+  assert.match(field.value, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/);
+  assert.deepEqual(clicks,['input','change']);
+});
+
+test('date is not overwritten if user has already selected one',()=>{
+  const field = {
+    isConnected:true, disabled:false, nodeType:1, parentElement:null,
+    id:'dateFrom', value:'2026-11-02', readOnly:false,
+    getClientRects(){return [1];},
+    getAttribute(k){return k==='aria-label'?'Data od':null;},
+    closest(){return null;},
+    dispatchEvent(){throw Error('must not mutate existing date');}
+  };
+  const doc = {
+    body:{innerText:'Data od, egzamin praktyczny'},documentElement:null,
+    addEventListener(){},querySelectorAll(s){return s==='input[type="date"]'?[field]:[];},
+    querySelector(){return null;}
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},
+    class {constructor(t){this.type=t;}},class {});
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.equal(field.value,'2026-11-02');
+});
