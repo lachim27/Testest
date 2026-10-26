@@ -150,3 +150,11 @@ W 0.26 rozszerzono wykrywanie ikony menu ☰:
 - Raport anonimowy podaje **Rozpoznano stronę główną: true/false** oraz **Ikony menu ☰ w lewym górnym rogu: liczba**. Nie zbiera numeru PKK, nazwiska, cookies ani wartości pól.
 
 Zachowany stały podpis release, ten sam identyfikator aplikacji, limit zapytań i zakaz potwierdzania terminu lub opłaty przez moduł przygotowania. Testy 29/29 w symulowanym DOM. Ostateczny test wymaga zalogowanego telefonu.
+
+## 0.27 — poprawione pola Profil i WORD na podstawie zrzutów ekranu
+
+Rzeczywisty ekran Info-Kierowca ma radio **PKK – Profil kandydata na kierowcę (PKK)** (na zdjęciu niezaznaczone), pole **Numer profilu**, zależną **Kategorię**, a niżej przełącznik między **Pokaż tylko najbliższe terminy dla ośrodków WORD w okolicy** (domyślny, niezgodny z konkretnym MORD Kraków) a **Wybierz ośrodek WORD i pokaż wszystkie terminy egzaminów**. Na liście ośrodków widoczny jest Kraków, ul. **Nowohucka 33a**, oraz osobna lokalizacja **Kraków/O Kraków Balicka**. Pierwszy krok kończy się przyciskiem **Następny**, nie Dalej.
+
+0.27 rozpoznaje pełne etykiety radiobuttonów (także MUI/Angular label z inputem typu radio), wybiera profil typu PKK, pojedynczy PKK, kategorię B, **konkretny WORD** i tylko jednoznacznie zidentyfikowaną centralę Nowohucka 33a, nie filię Balicka. Kliknięcie Następny jest dozwolone tylko, gdy automat potwierdzi wykonanie poprzednich bezpiecznych wyborów. Nie rezerwuje daty, nie naciska przycisków płatności, nie dodaje zapytań o terminy.
+
+Raport Kopiuj raport automatu formularza (bez PKK) w nowej wersji pokazuje osobno anonimowe stany PKK, profilu, kategorii B, trybu WORD, Nowohuckiej i przycisku Następny. **Nie eksportuje wartości PKK ani danych osobowych**. Testy JavaScript: 32/32 przeszły w symulowanym DOM; rzeczywista interakcja po zalogowaniu musi zostać sprawdzona na telefonie.
