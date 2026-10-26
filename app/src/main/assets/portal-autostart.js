@@ -9,6 +9,7 @@
   var lastAction = 0;
   var stopped = false;
   var pending = null;
+  var pendingSince = 0;
   var changed = {};
   var awaitingResults = false;
   var clicks = 0;
@@ -246,7 +247,7 @@
     return false;
   }
   function openCombobox(reason, label) {
-    if (changed[reason]) return false;
+    if (changed[reason] || changed['lista ' + reason]) return false;
     var els = Array.from(document.querySelectorAll(
       '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container,' +
       ' .mat-select-trigger, .MuiSelect-select, .MuiAutocomplete-inputRoot,' +
@@ -262,6 +263,7 @@
     if (els.length !== 1) return false;
     if (clicks >= maxClicks) return false;
     pending = reason;
+    pendingSince = Date.now();
     return click(els[0], 'lista ' + reason);
   }
   function selectOpenOption() {
@@ -270,7 +272,13 @@
       '[role="option"], mat-option, .mat-mdc-option, .ng-option,' +
       ' .MuiMenuItem-root, .p-dropdown-item, .p-select-option,' +
       ' [role="listbox"] li, li[aria-selected]')).filter(visible);
-    if (!options.length) { pending = null; return false; }
+    if (!options.length) {
+      if (Date.now() - pendingSince < 6500) return true;
+      report('Otworzono listę ' + pending +
+        ', ale nie wykryto jej opcji. Potrzebny raport lub zdjęcie listy.');
+      pending = null;
+      return true;
+    }
     var regex = pending === 'osrodek' ?
       /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/ :
       pending === 'kategoria' ? /^(kategoria\s+)?b$/ :
@@ -290,7 +298,7 @@
     }
     report('Nie rozpoznano jednoznacznie opcji ' + pending + ' — wybierz ręcznie.');
     pending = null;
-    return false;
+    return true;
   }
   function chooseProfileType() {
     if (changed['profil PKK']) return false;
@@ -522,7 +530,7 @@
     };
   }
   function retry() {
-    stopped = false; pending = null; clicks = 0; lastAction = 0;
+    stopped = false; pending = null; pendingSince = 0; clicks = 0; lastAction = 0;
     changed = {}; awaitingResults = false; lastReport = '';
     report('Ponowna próba przygotowania formularza.');
     scan();
