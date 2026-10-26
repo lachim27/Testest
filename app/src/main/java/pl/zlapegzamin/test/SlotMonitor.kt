@@ -163,7 +163,7 @@ class SlotMonitor(
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
                 val nextDiag = data.optJSONObject("nextDiagnostics") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.32\n" +
+                val report = "Automat formularza ZłapEgzamin 0.33\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -751,11 +751,12 @@ class SlotMonitor(
                 }
                 "native_request_ready" -> {
                     val captured = NativeExamReader.capture(message)
-                    if (captured != null && isPortal(web.url)) {
-                        web.evaluateJavascript(
-                            "window.__zlapFormPrep && window.__zlapFormPrep.stop();", null
-                        )
-                    }
+                    // Capturing the API request is NOT proof the exam-type
+                    // wizard is complete: the portal may prefetch term lists
+                    // with "Wyświetl wszystkie typy" still selected. Previously
+                    // this stopped form preparation before it could click the
+                    // exact "Egzamin praktyczny" radio button. The DOM helper
+                    // now stops itself only when the real results view is ready.
                     if (captured != nativeRequest) nativeRequestVersion++
                     nativeRequest = captured
                     nativeSetupIssue = if (captured != null) "" else {
