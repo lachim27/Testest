@@ -163,7 +163,7 @@ class SlotMonitor(
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
                 val nextDiag = data.optJSONObject("nextDiagnostics") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.29\n" +
+                val report = "Automat formularza ZłapEgzamin 0.30\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -215,6 +215,8 @@ class SlotMonitor(
                         ", nieaktywne: " + nextDiag.optInt("disabledCandidates") + "\n" +
                     "Tekst zakładki w menu: " +
                         (if (data.optBoolean("menuTextVisible")) "widoczny" else "nie wykryto") + "\n" +
+                    "Etap wyboru terminu w Portalu: " +
+                        data.optString("bookingUiStage", "nieuruchomiony").take(40) + "\n" +
                     "Etap: " + data.optString("last").take(180) + "\n" +
                     "Status odczytu: " + diagnostics.take(160)
                 onResult(report)
