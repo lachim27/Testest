@@ -10,6 +10,7 @@
   var stopped = false;
   var pending = null;
   var changed = {};
+  var awaitingResults = false;
   var clicks = 0;
   var lastReport = '';
   var maxClicks = 14;
@@ -92,7 +93,12 @@
       return !o.disabled && !!o.value && !/^(wybierz|select|--)/.test(norm(o.text));
     });
     var matches = options.filter(function (o) { return match.test(norm(o.text)); });
-    return matches.length === 1 && updateSelect(fields[0], matches[0], reason);
+    if (matches.length !== 1) return false;
+    if (fields[0].value === matches[0].value) {
+      changed[reason] = true;
+      return false;
+    }
+    return updateSelect(fields[0], matches[0], reason);
   }
   function chooseSingleProfile() {
     if (changed['jedyny profil PKK']) return false;
@@ -116,7 +122,7 @@
   function openCombobox(reason, label) {
     if (changed[reason]) return false;
     var els = Array.from(document.querySelectorAll(
-      '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container'))
+      '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container, button[aria-haspopup="listbox"]'))
       .filter(visible).filter(function (el) { return label.test(fieldLabel(el)); });
     if (els.length !== 1) return false;
     if (clicks >= maxClicks) return false;
@@ -128,12 +134,17 @@
     var options = Array.from(document.querySelectorAll(
       '[role="option"], mat-option, .mat-mdc-option')).filter(visible);
     if (!options.length) { pending = null; return false; }
-    var regex = pending === 'osrodek' ? /^mord krakow$/ :
-      pending === 'kategoria' ? /^b$/ :
-      pending === 'praktyczny' ? /^(praktyka|praktyczny)$/ :
+    var regex = pending === 'osrodek' ? /^mord krakow(\\b|$)/ :
+      pending === 'kategoria' ? /^(kategoria\\s+)?b$/ :
+      pending === 'praktyczny' ? /^(egzamin\\s+)?(praktyka|praktyczny)$/ :
       pending === 'profil PKK' ? /^pkk$/ : null;
-    if (!regex) return false;
-    var matches = options.filter(function (el) { return regex.test(name(el)); });
+    var matches = pending === 'numer PKK'
+      ? options.filter(function (el) {
+          var value = name(el);
+          return value && !/^(wybierz|wybierz profil|brak profilu)/.test(value) &&
+            !/\\bpkz\\b/.test(value);
+        })
+      : regex ? options.filter(function (el) { return regex.test(name(el)); }) : [];
     if (matches.length === 1) {
       var which = pending;
       pending = null;
@@ -142,6 +153,32 @@
     report('Nie rozpoznano jednoznacznie opcji ' + pending + ' — wybierz ręcznie.');
     pending = null;
     return false;
+  }
+  function fillDateFrom() {
+    if (changed['data od']) return false;
+    var fields = Array.from(document.querySelectorAll('input[type="date"]'))
+      .filter(visible)
+      .filter(function (el) {
+        return !el.readOnly && /(data|termin|od kiedy|od dnia)/.test(fieldLabel(el));
+      });
+    if (fields.length !== 1) return false;
+    var field = fields[0];
+    if (field.value) {
+      changed['data od'] = true;
+      return false;
+    }
+    var now = new Date();
+    var date = [now.getFullYear(), ('0' + (now.getMonth()+1)).slice(-2),
+      ('0' + now.getDate()).slice(-2)].join('-');
+    if (field.min && date < field.min) date = field.min;
+    if (field.max && date > field.max) return false;
+    field.value = date;
+    field.dispatchEvent(new Event('input', {bubbles:true}));
+    field.dispatchEvent(new Event('change', {bubbles:true}));
+    changed['data od'] = true;
+    lastAction = Date.now();
+    report('Ustawiono datę wyszukiwania na ' + date + '.');
+    return true;
   }
   function resultsShown() {
     var body = norm((document.body && document.body.innerText || '').slice(0, 16000));
@@ -174,14 +211,17 @@
     if (selectOpenOption()) return;
     if (chooseSingleProfile()) return;
     if (selectNative('osrodek', /(osrodek|word|mord|centrum egzamin)/,
-        /^mord krakow$/)) return;
-    if (selectNative('kategoria', /kategoria/, /^b$/)) return;
+        /^mord krakow(\\b|$)/)) return;
+    if (selectNative('kategoria', /kategoria/, /^(kategoria\\s+)?b$/)) return;
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
-        /^(praktyka|praktyczny)$/)) return;
+        /^(egzamin\\s+)?(praktyka|praktyczny)$/)) return;
+    if (fillDateFrom()) return;
 
     // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
     if (!changed['profil PKK'] && /rodzaj profilu|profil pkk|profil pkz/.test(body) &&
         uniqueClick(function (s) { return s === 'pkk'; }, 'profil PKK')) return;
+    if (changed['profil PKK'] &&
+        openCombobox('numer PKK', /(numer profilu|numer pkk|moje profile)/)) return;
     if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
     if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
@@ -197,10 +237,13 @@
     }, 'otwarcie formularza')) return;
 
     // Search action is only used once criteria are visible, never on a list of slots.
-    if (/rodzaj egzaminu|egzamin praktyczny|praktyka/.test(body) &&
+    if (!awaitingResults && /rodzaj egzaminu|egzamin praktyczny|praktyka/.test(body) &&
         uniqueClick(function (s) {
-          return /^(pokaz terminy|wyszukaj terminy|sprawdz terminy|szukaj terminu)$/.test(s);
-        }, 'wyszukiwanie terminow')) return;
+          return /^(pokaz terminy|wyszukaj terminy|sprawdz terminy|szukaj terminu|szukaj terminow|wyszukaj)$/.test(s);
+        }, 'wyszukiwanie terminow')) {
+      awaitingResults = true;
+      return;
+    }
 
     // A generic Next button is allowed only after a local, non-booking selection.
     if (Object.keys(changed).some(function (k) {
