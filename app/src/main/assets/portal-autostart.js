@@ -66,7 +66,10 @@
   // This is the exact menu service leading TO the exam search form.
   // It is not a reservation confirmation or an available exam slot.
   function examMenuAction(label) {
-    return /^(zarezerwuj egzamin( panstwowy)?|zarezerwuj termin( egzaminu( panstwowego)?)?|rezerwuj termin( egzaminu)?|rezerwacja terminu egzaminu)$/.test(label);
+    // User-confirmed name of the booking service in the Info-Kierowca menu.
+    return label === 'zarezerwuj termin egzaminu' ||
+      label === 'zarezerwuj termin' ||
+      label === 'rezerwacja terminu egzaminu';
   }
   function fieldLabel(el) {
     var labels = [el.getAttribute('aria-label'), el.getAttribute('placeholder'),
@@ -254,17 +257,19 @@
     if (selectOpenOption()) return;
     if (chooseProfileType()) return;
     if (chooseSingleProfile()) return;
-    if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
+    // The first step in the official form has center + PKK. The following
+    // step has practical exam choice. Do not confuse these with booking.
     if (selectNative('osrodek', /(osrodek|word|mord|centrum egzamin)/,
         /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/)) return;
+    if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
         /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
     if (fillDateFrom()) return;
 
     // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
     if (openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/)) return;
-    if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
+    if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
 
     var selectors = Array.from(document.querySelectorAll(
@@ -291,8 +296,8 @@
 
     // A generic Next button is allowed only after a local, non-booking selection.
     if (Object.keys(changed).some(function (k) {
-          return /profil|osrodek|kategoria|praktyczny/.test(k);
-        }) && /wybierz|profil|kategoria/.test(body) &&
+          return /profil|pkk|osrodek|kategoria|praktyczny/.test(norm(k));
+        }) && /wybierz|profil|pkk|kategoria|osrodek|mord|egzamin praktyczny/.test(body) &&
         !/dostepne terminy|godzina egzaminu|platnosc/.test(body)) {
       var stage = norm((document.querySelector('h1,h2,h3') || {}).textContent || '') +
         '|' + norm(location.pathname) + '|' + Object.keys(changed)
@@ -305,7 +310,7 @@
     report('Brak kolejnego bezpiecznego kroku. ' +
       (d.bookingAction ? 'Widzę przycisk rezerwacji, ale nie jest jednoznaczny. ' :
        d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
-       'Nie widzę jednoznacznego przycisku „Zarezerwuj egzamin”. ') +
+       'Nie widzę jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
       'Opcje → Diagnostyka → Kopiuj raport automatu.');
   }
   function diagnose() {
@@ -313,7 +318,7 @@
     try { a = buttons(); } catch (_) {}
     var names = a.map(name);
     var kinds = [
-      ['start', /^(zarezerwuj egzamin|zarezerwuj termin|rezerwuj termin|rezerwacja terminu egzaminu)/],
+      ['start', /^(zarezerwuj termin egzaminu|zarezerwuj termin|rezerwacja terminu egzaminu)$/],
       ['pkk', /^(profil )?pkk$/],
       ['next', /^(dalej|przejdz dalej)$/],
       ['search', /^(pokaz|wyszukaj|sprawdz|szukaj) termin/],
