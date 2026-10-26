@@ -63,6 +63,15 @@
     report('Wybrano: ' + reason + '. Czekam na kolejny krok.');
     return true;
   }
+  // Real screenshot shows "Następny →", not the plain "Następny".
+  // Match only the wizard-navigation action and an optional arrow/icon label.
+  // NEVER accept labels containing "zarezerwuj", "potwierdź", etc.
+  function nextWizardLabel(raw) {
+    var label = norm(raw || '');
+    label = label.replace(/\s*(→|➜|➔|➝|❯|›|»|⟶|⟹|➡|⇢)\s*$/g, '').trim();
+    label = label.replace(/\s*(arrow_forward|arrow_right_alt|chevron_right|east)\s*$/g, '').trim();
+    return /^(nastepny|dalej|przejdz dalej)$/.test(label);
+  }
   function uniqueClick(test, reason) {
     var matches = buttons().filter(function (el) { return test(name(el), el); });
     // Some navigation components expose both an outer <a> and an inner
@@ -708,8 +717,7 @@
         categoryStatus() !== 'other') {
       if (!changed['przejście Profil i WORD'] &&
           uniqueClick(function(txt){
-            return txt==='nastepny' || txt==='dalej' ||
-              txt==='przejdz dalej';
+            return nextWizardLabel(txt);
           }, 'przejście Profil i WORD')) return;
     }
     var d = diagnose();
@@ -727,7 +735,7 @@
     var kinds = [
       ['start', /^(zarezerwuj termin egzaminu|zarezerwuj termin|rezerwacja terminu egzaminu)$/],
       ['pkk', /^(profil )?pkk$/],
-      ['next', /^(nastepny|dalej|przejdz dalej)$/],
+      ['next', /^(nastepny|dalej|przejdz dalej)(?:\s*(?:→|➜|➔|➝|❯|›|»|⟶|⟹|➡|⇢|arrow_forward|arrow_right_alt|chevron_right|east))?$/],
       ['search', /^(pokaz|wyszukaj|sprawdz|szukaj) termin/],
       ['payment', /^(zaplac|oplac|potwierdz rezerwacje)$/]
     ];
@@ -735,6 +743,23 @@
     kinds.forEach(function (v) {
       controls[v[0]] = names.filter(function (n) {return v[1].test(n);}).length;
     });
+    // Count navigation actions outside buttons(), too: a disabled or styled
+    // action may be present on the page yet not safely clickable.
+    var nextRaw = [], nextEnabled = [], nextDisabled = 0;
+    try {
+      nextRaw = Array.from(document.querySelectorAll(
+        'button, a, [role="button"], input[type="submit"], input[type="button"]'
+      )).filter(function(el) {
+        return nextWizardLabel(name(el));
+      });
+      nextEnabled = nextRaw.filter(visible);
+      nextDisabled = nextRaw.filter(function(el) {
+        return !!el.disabled || (el.getAttribute &&
+          el.getAttribute('aria-disabled') === 'true');
+      }).length;
+    } catch (_) {}
+    var firstStage = onProfileWordStep(norm(
+      (document.body && document.body.innerText || '').slice(0, 20000)));
     var elements = [];
     try {
       elements = Array.from(document.querySelectorAll(
@@ -782,6 +807,16 @@
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
+      nextDiagnostics:{
+        firstStage:firstStage,
+        rawCandidates:nextRaw.length,
+        enabledCandidates:nextEnabled.length,
+        disabledCandidates:nextDisabled,
+        profileAndWordReady:!!changed['profil PKK'] &&
+          !!changed['wybór WORD'] && !!changed['ośrodek Kraków'] &&
+          !!(changed['jedyny profil PKK'] || changed['numer PKK']) &&
+          categoryStatus() !== 'other'
+      },
       setupSteps:{
         pkk:!!changed['profil PKK'],
         profile:!!(changed['numer PKK'] || changed['jedyny profil PKK']),
