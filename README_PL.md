@@ -114,3 +114,11 @@ Jeśli po zalogowaniu monitor nadal nie widzi listy terminów, otwórz **Opcje �
 Naprawiono zatrzymywanie automatu przez sam link „Opłać egzamin” w menu portalu (nie jest to jeszcze ekran płatności). Przy aktualizacji z 0.19–0.21 jednorazowo migracja uruchamia automatyczne przygotowanie formularza, ponieważ wcześniejsza opcja była zapisywana jako wyłączona nawet po zmianie jej domyślnej wartości. Później można ją wyłączyć na stałe.
 
 Automat nadal nie gwarantuje działania przy nieznanym układzie interfejsu zalogowanego portalu. Bez diagnostyki z realnego ekranu nie należy twierdzić, że wybór PKK/ośrodka działa u każdego. Jeśli formularz ma kilka profili PKK, automat powinien wymagać decyzji użytkownika. Podpis wersji 0.22 pozostaje ten sam co podpis 0.19–0.21.
+
+## 0.23 — rzeczywista nazwa zakładki
+
+Użytkownik potwierdził, że zakładka prowadząca do listy dostępnych terminów to **„Zarezerwuj termin egzaminu”**, a nie „Zarezerwuj egzamin”. Ta nazwa była rozpoznawana w starszym kodzie; problemu nie można przypisać wyłącznie nazwie menu.
+
+Wersja 0.23 doprecyzowuje sekwencję w automatycznym przygotowaniu: **menu „Zarezerwuj termin egzaminu” → MORD Kraków i pojedynczy PKK → „Dalej” → egzamin praktyczny → lista terminów**. Poprawiono warunek przejścia „Dalej” dla pierwszego kroku z PKK i ośrodkiem, który wcześniej wymagał innych etykiet. Nie uruchamia to funkcji autorezerwacji ani nie wybiera dostępnej godziny czy płatności. Dodano testy na dokładną nazwę menu i etap PKK → Dalej.
+
+Działania na żywej, zalogowanej stronie nadal wymagają sprawdzenia. Jeśli nie przechodzi prawidłowo, użyj **Opcje → Diagnostyka → Kopiuj raport automatu formularza (bez PKK)** w aplikacji 0.22 lub nowszej.
