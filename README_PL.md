@@ -158,3 +158,11 @@ Rzeczywisty ekran Info-Kierowca ma radio **PKK – Profil kandydata na kierowcę
 0.27 rozpoznaje pełne etykiety radiobuttonów (także MUI/Angular label z inputem typu radio), wybiera profil typu PKK, pojedynczy PKK, kategorię B, **konkretny WORD** i tylko jednoznacznie zidentyfikowaną centralę Nowohucka 33a, nie filię Balicka. Kliknięcie Następny jest dozwolone tylko, gdy automat potwierdzi wykonanie poprzednich bezpiecznych wyborów. Nie rezerwuje daty, nie naciska przycisków płatności, nie dodaje zapytań o terminy.
 
 Raport Kopiuj raport automatu formularza (bez PKK) w nowej wersji pokazuje osobno anonimowe stany PKK, profilu, kategorii B, trybu WORD, Nowohuckiej i przycisku Następny. **Nie eksportuje wartości PKK ani danych osobowych**. Testy JavaScript: 32/32 przeszły w symulowanym DOM; rzeczywista interakcja po zalogowaniu musi zostać sprawdzona na telefonie.
+
+## 0.28 — kategoria B jest już wybrana, nie należy jej klikać
+
+Użytkownik potwierdził, że po wyborze PKK portal sam ustawia kategorię B. W 0.27 moduł przygotowania mimo to wymagał odnotowania własnej zmiany kategorii B i przez to zatrzymywał się przed przyciskiem Następny. Raport pokazywał kategoria B false mimo że na ekranie była wybrana.
+
+Wersja 0.28 **nie zmienia kategorii w formularzu ani nie otwiera ponownie jej listy**. Jeśli wartość jest dostępna w DOM, odczytuje ją wyłącznie kontrolnie i blokuje przejście tylko wtedy, gdy wykryta jest jawnie inna kategoria niż B. Jeśli portal nie ujawnia jej wartości w kontrolce, ufa istniejącemu ustawieniu portalu (zgodnie z zachowaniem zgłoszonym przez użytkownika) i nie wymaga już samodzielnego wybrania kategorii przed Następny. Raport rozróżnia B odczytana, wartość nieodczytana (bez zmiany) oraz inna kategoria. W dalszym ciągu przed Następny wymagane są wybrany PKK, numer profilu, tryb konkretnego WORD-u oraz ośrodek Kraków Nowohucka.
+
+Wszystkie 35 testów JS w symulowanym DOM przeszło. Odczyt nie przesyła numeru PKK ani innej wartości profilu poza WebView. Nie rezerwuje terminu ani nie dokonuje płatności. Realny przebieg formularza po logowaniu wymaga sprawdzenia na telefonie.
