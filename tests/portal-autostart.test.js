@@ -254,6 +254,7 @@ test('after choosing PKK the first wizard step can advance with Dalej',()=>{
   const radio={
     isConnected:true,disabled:false,parentElement:null,nodeType:1,
     value:'PKK',innerText:'PKK',getAttribute(){return null;},
+    closest(){return null;},
     getClientRects(){return [1];},click(){clicked.push('PKK');}
   };
   const next={
