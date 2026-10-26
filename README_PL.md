@@ -80,3 +80,11 @@ Przycisk „Test alarmu” nie kontaktuje się z portalem i nie rezerwuje egzami
 
 ## Aktualizacje bez reinstalacji (0.18)
 Dodano podpisywanie release stałym kluczem z GitHub Secrets i rosnący numer wersji. Jednorazowa konfiguracja i ograniczenia przejścia ze starych wersji są opisane w [SIGNING_PL.md](SIGNING_PL.md). Bez skonfigurowanego klucza nie publikujemy APK z przypadkowym podpisem.
+
+## Automatyczne przygotowanie formularza (0.19, funkcja eksperymentalna)
+
+W **Opcje → Automatyczne przygotowanie formularza** można włączyć pomocnika, który działa **wyłącznie w zalogowanym WebView portalu** info-kierowca.pl. Próbuje przejść od „Zarezerwuj termin” do wyboru pojedynczego profilu PKK, ośrodka MORD Kraków, kategorii B i egzaminu praktycznego, a następnie do listy terminów. Nie loguje się przez zewnętrznego dostawcę tożsamości, nie wybiera godziny, nie zatwierdza rezerwacji i nie obsługuje płatności. Nie uruchamia sam dodatkowego odczytu API.
+
+Automat jest domyślnie **wyłączony**. Jeśli portal pokazuje kilka PKK, niejednoznaczne elementy albo zmienił interfejs, pomaga tylko częściowo: sprawdź zakładkę **Portal** i wybierz pozostałe opcje ręcznie. Status działania jest widoczny w Opcjach. Nie gwarantujemy działania na każdej wersji portalu: nie mamy dostępu do prywatnego widoku zalogowanego użytkownika. Do czasu sprawdzenia w realnej sesji to wersja testowa.
+
+To oddzielna opcja od **Autorezerwacji – zajęcie miejsca**. Nie zastępuje ustawień zakresu dat i godzin, limitów HTTP ani procesu opłacenia egzaminu.
