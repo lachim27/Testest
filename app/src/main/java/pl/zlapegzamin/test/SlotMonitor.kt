@@ -162,7 +162,7 @@ class SlotMonitor(
                 val controls = data.optJSONObject("controls") ?: JSONObject()
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.27\n" +
+                val report = "Automat formularza ZłapEgzamin 0.28\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -196,8 +196,11 @@ class SlotMonitor(
                     "Menu usług otwarto automatycznie: " +
                         data.optBoolean("menuOpened") + "\n" +
                     "PKK wybrane: " + steps.optBoolean("pkk") +
-                        ", numer profilu: " + steps.optBoolean("profile") +
-                        ", kategoria B: " + steps.optBoolean("categoryB") + "\n" +
+                        ", numer profilu: " + steps.optBoolean("profile") + "\n" +
+                    "Kategoria B (już ustawiona w Portalu): " +
+                        (if (steps.optBoolean("categoryB")) "B odczytana" else
+                         if (!steps.optBoolean("categoryReadable")) "wartość nieodczytana — bez zmiany"
+                         else "inna kategoria") + "\n" +
                     "Tryb konkretnego WORD: " + steps.optBoolean("specificWord") +
                         ", Kraków Nowohucka: " + steps.optBoolean("centerNowohucka") +
                         ", Następny: " + steps.optBoolean("nextStep") + "\n" +
