@@ -862,3 +862,120 @@ test('diagnostics expose disabled Następny without clicking it',()=>{
   assert.equal(diag.nextDiagnostics.enabledCandidates,0);
   assert.equal(diag.nextDiagnostics.disabledCandidates,1);
 });
+
+
+// 0.30: matching the screenshots: 17/12/2026 06:00, 4 free places,
+// followed by the "Potwierdź wybrany egzamin" dialog.
+function reservationScreen({wrongDay=false,wrongHour=false,wrongCategory=false,
+  noPlaces=false,wrongModal=false,extraCard=false,afterConfirm=false}={}) {
+  const events=[],clicks=[];
+  let modalVisible=false;
+  function item(tag,txt) {
+    return {tagName:tag,nodeType:1,isConnected:true,disabled:false,
+      parentElement:null,innerText:txt,textContent:txt,
+      getAttribute(){return null;},
+      getClientRects(){return [1];},
+      contains(other){return other===this;}};
+  }
+  const previous=item('DIV','16/12/2026');
+  const otherCard=item('DIV','Egzamin praktyczny KAT B P: 06:00 4 wolne miejsca 229,00 zł');
+  const targetDay=item('DIV',wrongDay?'18/12/2026':'17/12/2026');
+  const actualHour=wrongHour?'07:00':'06:00';
+  const cat=wrongCategory?'C':'B';
+  const places=noPlaces?'0 wolne miejsca':'4 wolne miejsca';
+  const card=item('DIV','Egzamin praktyczny KAT '+cat+' P: '+actualHour+' '+places+' 229,00 zł');
+  const radio={...item('INPUT',''),getAttribute(k){return k==='type'?'radio':null;},
+    click(){clicks.push('card radio');modalVisible=true;}};
+  card.querySelectorAll=function(q){
+    return q==='input[type="radio"], [role="radio"]'?[radio]:[];
+  };
+  otherCard.querySelectorAll=function(){return [];};
+  const modal=item('DIV',wrongModal ?
+    'Potwierdź wybrany egzamin. Egzamin praktyczny Kategoria B Data i godzina 18/12/2026, 06:00 Cena 229,00 zł':
+    'Potwierdź wybrany egzamin. Rodzaj egzaminu Egzamin praktyczny. Kategoria B. Data i godzina 17/12/2026, 06:00 Cena 229,00 zł.');
+  const confirm=item('BUTTON','Potwierdź i przejdź dalej');
+  confirm.click=function(){clicks.push('modal confirm');};
+  modal.querySelectorAll=function(q){return q==='button, [role="button"]'?[confirm]:[];};
+  const all=[previous,otherCard,targetDay,card];
+  if(extraCard) {
+    const duplicate=item('DIV',card.innerText);
+    duplicate.querySelectorAll=function(){return [radio];};
+    all.push(duplicate);
+  }
+  const doc={body:{innerText:'Dostępne terminy egzaminów - 17/12/2026'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q==='*') return all;
+      if(q==='[role="dialog"], [aria-modal="true"], .MuiDialog-paper, .mat-dialog-container, .modal-dialog')
+        return modalVisible ? [modal] : [];
+      return [];
+    }
+  };
+  const wnd={setInterval(){return 1;},clearInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(m){events.push(JSON.parse(m));}}};
+  const setup=new Function('window','document','location','getComputedStyle',
+    'CSS','Event','MutationObserver',source);
+  setup(wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class {},class {});
+  wnd.__zlapFormPrep.configure({enabled:true});
+  return {wnd,events,clicks};
+}
+
+test('booking UI clicks only 17 December 06:00 and matching confirmation',()=>{
+  const f=reservationScreen();
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),true);
+  assert.deepEqual(f.clicks,['card radio','modal confirm']);
+  assert.ok(f.events.some(e=>e.kind==='booking_ui_selected'));
+  assert.ok(f.events.some(e=>e.kind==='booking_ui_advanced'));
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),false);
+});
+
+test('booking UI refuses a term outside configured dates or hours',()=>{
+  const f=reservationScreen();
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-18','2026-12-30','06:00','12:00'),false);
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','08:00','12:00'),false);
+  assert.deepEqual(f.clicks,[]);
+});
+
+test('booking UI never chooses a same-time card on a different day',()=>{
+  const f=reservationScreen({wrongDay:true});
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),false);
+  assert.deepEqual(f.clicks,[]);
+});
+
+test('booking UI refuses incorrect time, category or zero availability',()=>{
+  for(const config of [{wrongHour:true},{wrongCategory:true},{noPlaces:true}]) {
+    const f=reservationScreen(config);
+    assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+      '2026-12-01','2026-12-30','06:00','12:00'),false);
+    assert.deepEqual(f.clicks,[]);
+  }
+});
+
+test('booking UI does not confirm mismatched date in portal dialog',()=>{
+  const f=reservationScreen({wrongModal:true});
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),true);
+  assert.deepEqual(f.clicks,['card radio']);
+  assert.ok(f.events.some(e=>e.kind==='booking_ui_problem'));
+  assert.ok(!f.events.some(e=>e.kind==='booking_ui_advanced'));
+});
+
+test('booking UI refuses ambiguous matching exam cards',()=>{
+  const f=reservationScreen({extraCard:true});
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T06:00:00',
+    '2026-12-01','2026-12-30','06:00','12:00'),false);
+  assert.deepEqual(f.clicks,[]);
+});
+
+test('booking UI translates ISO Z offset into local Warsaw time',()=>{
+  const f=reservationScreen();
+  assert.equal(f.wnd.__zlapFormPrep.bookUi('practice_01','2026-12-17T05:00:00Z',
+    '2026-12-01','2026-12-30','06:00','12:00'),true);
+  assert.deepEqual(f.clicks,['card radio','modal confirm']);
+});
