@@ -819,7 +819,7 @@ class DashboardActivity : Activity() {
         put(prep, text(
             "Po Twoim zalogowaniu aplikacja spróbuje wybrać PKK, MORD Kraków, " +
                 "kategorię B i praktykę, a następnie otworzyć listę terminów. " +
-                "Od wersji 0.21 opcja jest domyślnie włączona. " +
+                "W 0.22 przygotowanie jest włączone automatycznie także po aktualizacji. " +
                 "Nie loguje się za Ciebie, nie zatwierdza miejsca ani płatności. " +
                 "Jeśli portal pokaże kilka profili PKK lub zmieni układ, " +
                 "poprosi Cię o ręczny wybór. Bez dodatkowych zapytań o egzaminy.",
@@ -841,6 +841,15 @@ class DashboardActivity : Activity() {
         }, 10)
         put(prep, text("Status: " + monitor.portalFormPreparationStatus,
             13f, muted), 10)
+        put(prep, action("↻ Ponów wybór formularza automatycznie", false) {
+            show("portal")
+            monitor.retryPortalFormPreparation { result ->
+                Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+            }
+        }, 9)
+        put(prep, text("Gdy automat stoi w miejscu, skopiuj w Opcjach → Diagnostyka " +
+            "raport automatu. Pokazuje typy kontrolek, bez numeru PKK ani danych logowania.",
+            12f, muted), 9)
         put(prep, action("Pokaż formularz w Portalu", false) { show("portal") })
         put(page, prep, 19)
 
@@ -1082,6 +1091,16 @@ class DashboardActivity : Activity() {
             val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("ZłapEgzamin diagnostyka", report))
             Toast.makeText(this, "Skopiowano diagnostykę bez danych logowania", Toast.LENGTH_LONG).show()
+        }, 10)
+        put(debug, action("Kopiuj raport automatu formularza (bez PKK)", false) {
+            monitor.portalFormPreparationReport { report ->
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText("ZłapEgzamin automat", report)
+                )
+                Toast.makeText(this, "Skopiowano raport automatu bez danych PKK.",
+                    Toast.LENGTH_LONG).show()
+            }
         }, 10)
         put(debug, action("↻  Sprawdź terminy teraz", false) { manualCheck() }, 10)
         put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
