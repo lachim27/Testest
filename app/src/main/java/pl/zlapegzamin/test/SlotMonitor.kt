@@ -811,6 +811,28 @@ class SlotMonitor(
                         diagnostics = "Portal potwierdził odnowienie uwierzytelnienia."
                     }
                 }
+                "booking_ui_expanding" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        diagnostics = "Rozwijam właściwy dzień, szukam pasującej godziny i kategorii B."
+                        event("Rozwijanie daty pasującego egzaminu")
+                    }
+                }
+                "booking_ui_no_card" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        bookingInFlight = false
+                        prefs.edit().putString("booking_phase", "idle")
+                            .putString("booking_status",
+                                "Rozwinięto datę, ale nie ma jednoznacznej pasującej karty.")
+                            .remove("last_booking_key")
+                            .remove("last_booking_attempt_at")
+                            .apply()
+                        diagnostics = "Nie kliknięto egzaminu. Sprawdź listę terminów w Portalu."
+                        event(diagnostics)
+                        onUpdate()
+                    }
+                }
                 "booking_ui_selected" -> {
                     if (bookingInFlight && bookingPhase == "creating" &&
                         message.optString("date") == lastBookingDate) {
