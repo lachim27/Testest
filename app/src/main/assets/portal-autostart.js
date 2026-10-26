@@ -525,33 +525,112 @@
     return click(candidates[0], 'profil PKK');
   }
 
-  // Second wizard screen observed in Android screenshots:
-  // "Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a"
-  // "Wybór rodzaju egzaminu" has four RADIO choices, not a dropdown.
-  // The portal defaults to "Wyświetl wszystkie typy egzaminu".
-  // Pick the single exact "Egzamin praktyczny" option, never theory,
-  // combined, or a similarly-named card on the results screen.
-  function choosePracticalExamRadio() {
-    var body = norm(document.body && document.body.innerText || '');
-    if (!/wybor rodzaju egzaminu/.test(body) ||
-        !/wyswietl wszystkie typy egzaminu/.test(body) ||
-        !/wybor terminu egzaminu dla/.test(body)) return false;
-    // Never toggle a selected radio after a successful choice.
-    if (changed['rodzaj: egzamin praktyczny']) return false;
-    var choices = radioChoices(function(txt) {
-      return txt === 'egzamin praktyczny';
+  // On the second wizard screen Info-Kierowca renders four RADIO inputs.
+  // In 0.31 a textual label's click was treated as success even if the portal
+  // actually selected "Egzamin łączony". Never infer a selection from a click.
+  function practicalRadioScreen(body) {
+    return /wybor rodzaju egzaminu/.test(body) &&
+      /wyswietl wszystkie typy egzaminu/.test(body) &&
+      /wybor terminu egzaminu dla/.test(body);
+  }
+  function practicalRadioLabel(input) {
+    var names = [];
+    try {
+      if (input.getAttribute) {
+        names.push(input.getAttribute('aria-label') || '');
+        var ids = String(input.getAttribute('aria-labelledby') || '').split(/\s+/);
+        ids.forEach(function(id) {
+          if (id && document.getElementById) {
+            var labelled = document.getElementById(id);
+            if (labelled) names.push(labelled.innerText || labelled.textContent || '');
+          }
+        });
+      }
+      if (input.id && document.querySelector) {
+        var htmlLabel=document.querySelector(
+          'label[for="' + CSS.escape(input.id) + '"]');
+        if (htmlLabel) names.push(htmlLabel.innerText || htmlLabel.textContent || '');
+      }
+      if (input.closest) {
+        var wrapper=input.closest(
+          'label, mat-radio-button, .mat-radio-button, .mat-mdc-radio-button,' +
+          ' .MuiFormControlLabel-root, [role="radio"]');
+        if (wrapper && wrapper!==input) {
+          var label=wrapper.querySelector &&
+            wrapper.querySelector('label, .mdc-label');
+          names.push(label ? label.innerText || label.textContent || '' :
+            wrapper.innerText || wrapper.textContent || '');
+        }
+      }
+    } catch (_) {}
+    return names.map(norm).filter(Boolean);
+  }
+  function practicalRadioMatch() {
+    var candidates = [], all = [];
+    try {
+      all=Array.from(document.querySelectorAll('input[type="radio"], [role="radio"]'));
+    } catch (_) {}
+    all.forEach(function(input) {
+      // Explicitly address a single control, never a broad label/card.
+      var labels=practicalRadioLabel(input);
+      if (!labels.some(function(n){return n==='egzamin praktyczny';})) return;
+      var clicked=input;
+      try {
+        if (!visible(input)) {
+          // Input can be visually hidden under a custom radio; click the
+          // uniquely associated visible LABEL, never its neighbouring card.
+          var outer=input.closest && input.closest(
+            'label, mat-radio-button, .mat-radio-button, .mat-mdc-radio-button,' +
+            ' .MuiFormControlLabel-root, [role="radio"]');
+          var explicit=input.id && document.querySelector &&
+            document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+          clicked=visible(explicit) ? explicit :
+            visible(outer) ? outer : null;
+        }
+      } catch (_) {clicked=null;}
+      if (clicked) candidates.push({radio:input, clickTarget:clicked});
     });
-    if (choices.length !== 1) {
-      if (choices.length > 1)
-        report('Kilka nierozróżnialnych kontrolek „Egzamin praktyczny”. Nie wybieram automatycznie.');
-      return false;
-    }
-    if (checkedRadio(choices[0])) {
+    return candidates.length===1 ? candidates[0] : null;
+  }
+  function practicalRadioVerified() {
+    var match=practicalRadioMatch();
+    if (!match) return false;
+    var radio=match.radio;
+    if (radio.checked === true ||
+        (radio.getAttribute && radio.getAttribute('aria-checked')==='true')) return true;
+    try {
+      var outer=radio.closest && radio.closest(
+        'mat-radio-button, .mat-radio-button, .mat-mdc-radio-button, .MuiFormControlLabel-root');
+      if (outer && outer.getAttribute &&
+          outer.getAttribute('aria-checked')==='true') return true;
+    } catch (_) {}
+    return false;
+  }
+  function choosePracticalExamRadio() {
+    if (practicalRadioVerified()) {
       changed['rodzaj: egzamin praktyczny'] = true;
-      report('Egzamin praktyczny jest już zaznaczony.');
+      report('Potwierdzono zaznaczenie egzaminu praktycznego.');
       return false;
     }
-    return click(choices[0], 'rodzaj: egzamin praktyczny');
+    if (changed['proba: egzamin praktyczny']) {
+      // Verification is performed after the action cooldown; do not make
+      // another click if the portal ignored the first or selected a different option.
+      stopped=true;
+      report('BŁĄD: po kliknięciu nie jest zaznaczony egzamin praktyczny. ' +
+        'Zatrzymano automat przed wyszukiwaniem, aby nie wybrać łączonego.');
+      return true;
+    }
+    var match=practicalRadioMatch();
+    if (!match) {
+      report('Nie znaleziono jednej, bezpiecznie powiązanej kontrolki radio „Egzamin praktyczny”. ' +
+        'Nie klikam innych typów ani nie przechodzę dalej.');
+      return true;
+    }
+    if (click(match.clickTarget, 'proba: egzamin praktyczny')) {
+      report('Kliknięto radio egzamin praktyczny — oczekuję na potwierdzenie zaznaczenia.');
+      return true;
+    }
+    return true;
   }
   function chooseWordMode() {
     if (changed['wybór WORD']) return false;
@@ -704,10 +783,15 @@
          !/wybor osrodka egzaminacyjnego word/.test(body)) &&
         openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
 
-    // First, handle the radio cards on the real "Wybór rodzaju egzaminu"
-    // screen. The native/custom select fallbacks below are for other layouts.
-    if (choosePracticalExamRadio()) return;
-    // Next step: choose practical exam, then search date list. Not a booking.
+    // The real exam-type screen has FOUR radio inputs. No fallback to
+    // a select/combobox or search action until the PRACTICAL input is
+    // visibly/semantically checked. This also stops a misselected combined exam.
+    if (practicalRadioScreen(body)) {
+      if (choosePracticalExamRadio()) return;
+      if (!practicalRadioVerified()) return;
+    }
+    // Other portal layouts may have explicit selects; preserve them only
+    // outside the four-radio screen.
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
         /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
@@ -1094,13 +1178,11 @@
         specificWord:!!changed['wybór WORD'],
         centerNowohucka:!!changed['ośrodek Kraków'],
         nextStep:!!changed['przejście Profil i WORD'],
-        practicalRadio:!!changed['rodzaj: egzamin praktyczny'],
-        practicalRadioScreen:(function(){
-          var b=norm(document.body && document.body.innerText || '');
-          return /wybor rodzaju egzaminu/.test(b) &&
-            /wyswietl wszystkie typy egzaminu/.test(b) &&
-            /wybor terminu egzaminu dla/.test(b);
-        })()
+        practicalRadio:practicalRadioScreen(body) ?
+          practicalRadioVerified() : !!changed['rodzaj: egzamin praktyczny'],
+        practicalRadioScreen:practicalRadioScreen(body),
+        practicalRadioAttempted:!!changed['proba: egzamin praktyczny'],
+        practicalRadioVerified:practicalRadioVerified()
       },
       wizard:elements.length>fields.other,
       controls:controls, fields:fields,
