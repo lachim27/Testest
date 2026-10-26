@@ -475,12 +475,16 @@ class DashboardActivity : Activity() {
             monitor.requestReady && monitor.lastCheckedAt == 0L -> "●  Czekam na pierwszy odczyt"
             overdue -> "●  Opóźniony odczyt automatyczny"
             connected -> "●  Odczyt terminów działa"
-            else -> "●  Otwórz portal i wybierz egzamin"
+            else -> "●  Przygotowuję portal do odczytu egzaminów"
         }
         put(status, text(stateLabel,
             20f, if (connected) green else Color.rgb(164, 110, 34), true), 10)
         liveStatusView = text(monitor.status(), 14f, muted)
         put(status, liveStatusView!!, 10)
+        if (monitor.portalFormPreparationEnabled && !monitor.requestReady) {
+            put(status, text("Automat formularza: " + monitor.portalFormPreparationStatus,
+                13f, blue), 9)
+        }
         if (monitor.requestReady && monitor.lastCheckedAt == 0L) {
             put(status, text("Portal wykryty, ale dane nie zostały jeszcze poprawnie pobrane. " +
                 "Sprawdź komunikaty w Opcjach → Diagnostyka.", 13f, muted), 10)
@@ -519,7 +523,7 @@ class DashboardActivity : Activity() {
             monitor.minimumAutoGapSeconds + " s (fabrycznie 900 s). " +
             "Zmiana w Opcje → Częstotliwość. Ręczny odczyt nie przesuwa planu.",
             12f, muted), 11)
-        put(status, action("Zaloguj się i wybierz egzamin  →", false) { show("portal") })
+        put(status, action("Otwórz Portal – automat przygotuje formularz  →", false) { show("portal") })
         put(page, status, 12)
         val reservation = card()
         put(reservation, text("TYMCZASOWA AUTOREZERWACJA", 12f, blue, true), 9)
@@ -815,6 +819,7 @@ class DashboardActivity : Activity() {
         put(prep, text(
             "Po Twoim zalogowaniu aplikacja spróbuje wybrać PKK, MORD Kraków, " +
                 "kategorię B i praktykę, a następnie otworzyć listę terminów. " +
+                "Od wersji 0.21 opcja jest domyślnie włączona. " +
                 "Nie loguje się za Ciebie, nie zatwierdza miejsca ani płatności. " +
                 "Jeśli portal pokaże kilka profili PKK lub zmieni układ, " +
                 "poprosi Cię o ręczny wybór. Bez dodatkowych zapytań o egzaminy.",
