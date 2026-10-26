@@ -410,33 +410,125 @@
     pending = null;
     return true;
   }
+
+  // Text on the real first screen (from user's Android screenshot):
+  // "PKK - Profil kandydata na kierowcę (PKK)"
+  // and "Wybierz ośrodek WORD i pokaż wszystkie terminy egzaminów".
+  function radioChoices(test) {
+    var elements = [];
+    try {
+      elements = Array.from(document.querySelectorAll(
+        'label, [role="radio"], .mat-radio-button, mat-radio-button,' +
+        ' .mat-mdc-radio-button, .MuiFormControlLabel-root,' +
+        ' input[type="radio"]')).filter(visible);
+    } catch (_) {}
+    var matched = elements.filter(function(el) {
+      var labels = [];
+      try {
+        labels.push(el.innerText || el.textContent || '');
+        if (el.getAttribute) labels.push(el.getAttribute('aria-label') || '');
+        if (el.value) labels.push(String(el.value));
+        // Some MUI/Angular inputs have value=on; their label has the text.
+        var wrap = el.closest && el.closest(
+          'label, mat-radio-button, .mat-mdc-radio-button, .MuiFormControlLabel-root');
+        if (wrap && wrap!==el) labels.push(wrap.innerText || wrap.textContent || '');
+        if (el.id && document.querySelector) {
+          var lab = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+          if (lab) labels.push(lab.textContent || '');
+        }
+      } catch (_) {}
+      return labels.some(function(txt){return test(norm(txt));});
+    });
+    // Prefer one top-level radio option, not two nested input/label matches.
+    matched = matched.filter(function(el) {
+      return !matched.some(function(other) {
+        return other!==el && other.contains && other.contains(el);
+      });
+    });
+    return matched;
+  }
+  function checkedRadio(el) {
+    if (!el) return false;
+    if (el.checked || (el.control && el.control.checked)) return true;
+    if (el.getAttribute && el.getAttribute('aria-checked')==='true') return true;
+    try {
+      return !!(el.querySelector && el.querySelector(
+        'input[type="radio"]:checked, [role="radio"][aria-checked="true"]'));
+    } catch (_) {return false;}
+  }
   function chooseProfileType() {
     if (changed['profil PKK']) return false;
     var body = norm(document.body && document.body.innerText || '');
-    if (!/wybor rodzaju profilu|wybierz rodzaj profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body)) return false;
-    var candidates = Array.from(document.querySelectorAll(
-      'input[type="radio"], [role="radio"], label')).filter(visible)
-      .filter(function(el) {
-        var txt = norm((el.getAttribute && el.getAttribute('aria-label')) ||
-          el.innerText || el.textContent || el.value || '');
-        return txt === 'pkk' || txt === 'profil pkk' ||
-          /^pkk\s*-\s*profil kandydata na kierowce/.test(txt);
-      });
-    // Choose only one candidate, avoiding duplicated nested labels.
-    candidates = candidates.filter(function(el) {
-      return !candidates.some(function(other) {
-        return other !== el && el.contains && el.contains(other);
-      });
+    if (!/wybor rodzaju profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body))
+      return false;
+    var candidates = radioChoices(function(txt) {
+      return txt==='pkk' || txt==='profil pkk' ||
+        /^pkk\s*-\s*profil kandydata na kierowce(?:\s*\(pkk\))?$/.test(txt);
     });
-    if (candidates.length !== 1) return false;
-    var chosen = candidates[0], child = chosen.querySelector &&
-      chosen.querySelector('input[type="radio"]:checked, [role="radio"][aria-checked="true"]');
-    if (chosen.checked || chosen.getAttribute('aria-checked') === 'true' ||
-        (chosen.control && chosen.control.checked) || child) {
-      changed['profil PKK'] = true;
+    if (candidates.length!==1) {
+      if (candidates.length>1) report('Niejednoznaczny wybór PKK — zatrzymano.');
       return false;
     }
-    return click(chosen, 'profil PKK');
+    if (checkedRadio(candidates[0])) {
+      changed['profil PKK']=true;
+      return false;
+    }
+    return click(candidates[0], 'profil PKK');
+  }
+  function chooseWordMode() {
+    if (changed['wybór WORD']) return false;
+    var body = norm(document.body && document.body.innerText || '');
+    if (!/wybor osrodka egzaminacyjnego word/.test(body)) return false;
+    var matches = radioChoices(function(txt) {
+      return /^wybierz osrodek word i pokaz wszystkie terminy egzaminow$/.test(txt);
+    });
+    if (matches.length!==1) {
+      if (matches.length>1) report('Wybór trybu WORD niejednoznaczny.');
+      return false;
+    }
+    if (checkedRadio(matches[0])) {
+      changed['wybór WORD']=true;
+      return false;
+    }
+    return click(matches[0], 'wybór WORD');
+  }
+  function chooseKrakowWordCard() {
+    if (changed['ośrodek Kraków'] || !changed['wybór WORD']) return false;
+    // Screenshots show the main Kraków card at Nowohucka 33a, distinct
+    // from Kraków/O Kraków Balicka. Only accept the exact headquarters.
+    var cards=[];
+    try {
+      cards=Array.from(document.querySelectorAll(
+        'label, li, [role="radio"], [role="button"], button,' +
+        ' [class*="card"], [class*="word"], [class*="center"],' +
+        ' [class*="osrodek"], [class*="location"], div'))
+        .filter(visible).filter(function(el) {
+          var text=norm(el.innerText || el.textContent || '');
+          return /krakow/.test(text) && /nowohucka\s*33\s*a/.test(text) &&
+            !/balicka/.test(text) && text.length<220;
+        });
+    } catch (_) {}
+    // Match the smallest visible card that mentions the specific address.
+    cards=cards.filter(function(el) {
+      return !cards.some(function(other) {
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    if (cards.length!==1) {
+      if (cards.length>1)
+        report('Kilka kart Kraków/Nowohucka — nie wybieram losowej.');
+      return false;
+    }
+    if (checkedRadio(cards[0]) ||
+        (cards[0].getAttribute && cards[0].getAttribute('aria-selected')==='true')) {
+      changed['ośrodek Kraków']=true;
+      return false;
+    }
+    return click(cards[0], 'ośrodek Kraków');
+  }
+  function onProfileWordStep(body) {
+    return /wybor rodzaju profilu/.test(body) &&
+      /wybor osrodka egzaminacyjnego word/.test(body);
   }
   function fillDateFrom() {
     if (changed['data od']) return false;
@@ -508,20 +600,30 @@
     if (selectOpenOption()) return;
     if (chooseProfileType()) return;
     if (chooseSingleProfile()) return;
-    // The first step in the official form has center + PKK. The following
-    // step has practical exam choice. Do not confuse these with booking.
-    if (selectNative('osrodek', /(osrodek|word|mord|centrum egzamin)/,
-        /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/)) return;
+    // PKK first: category can be disabled until a profile is selected.
+    if (changed['profil PKK'] &&
+        openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/))
+      return;
     if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
+    if (openCombobox('kategoria', /kategoria/)) return;
+
+    // The actual screen initially checks "nearest WORDs", which is NOT
+    // specific to MORD Kraków. Choose the explicitly named mode, then the
+    // main card at Nowohucka 33a (never Kraków Balicka).
+    if (chooseWordMode()) return;
+    if (chooseKrakowWordCard()) return;
+    if (changed['wybór WORD'] && selectNative('osrodek',
+        /(osrodek|word|mord|centrum egzamin)/,
+        /^(mord krakow|krakow|malopolski osrodek ruchu drogowego w krakowie)$/))
+      return;
+    if (changed['wybór WORD'] &&
+        openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
+
+    // Next step: choose practical exam, then search date list. Not a booking.
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
         /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
-    if (fillDateFrom()) return;
-
-    // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
-    if (openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/)) return;
-    if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
-    if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
+    if (fillDateFrom()) return;
 
     var selectors = Array.from(document.querySelectorAll(
       'select, [role="combobox"], mat-select')).filter(visible);
@@ -549,17 +651,19 @@
       return;
     }
 
-    // A generic Next button is allowed only after a local, non-booking selection.
-    if (Object.keys(changed).some(function (k) {
-          return /profil|pkk|osrodek|kategoria|praktyczny/.test(norm(k));
-        }) && /wybierz|profil|pkk|kategoria|osrodek|mord|egzamin praktyczny/.test(body) &&
-        !/dostepne terminy|godzina egzaminu|platnosc/.test(body)) {
-      var stage = norm((document.querySelector('h1,h2,h3') || {}).textContent || '') +
-        '|' + norm(location.pathname) + '|' + Object.keys(changed)
-          .filter(function (k) { return !/^next:/.test(k); }).sort().join(',');
-      if (!changed['next:' + stage] && uniqueClick(function (s) {
-        return s === 'dalej' || s === 'przejdz dalej';
-      }, 'next:' + stage)) return;
+    // On the screenshot "Następny" is a NEXT-WIZARD button, not a
+    // reservation. Click it only on first "Profil i WORD" step after the
+    // exact PKK + WORD preference and headquarters have been selected.
+    if (onProfileWordStep(body) &&
+        changed['profil PKK'] && changed['wybór WORD'] &&
+        changed['ośrodek Kraków'] &&
+        (changed['jedyny profil PKK'] || changed['numer PKK']) &&
+        changed['kategoria']) {
+      if (!changed['przejście Profil i WORD'] &&
+          uniqueClick(function(txt){
+            return txt==='nastepny' || txt==='dalej' ||
+              txt==='przejdz dalej';
+          }, 'przejście Profil i WORD')) return;
     }
     var d = diagnose();
     report('Brak kolejnego bezpiecznego kroku. ' +
@@ -576,7 +680,7 @@
     var kinds = [
       ['start', /^(zarezerwuj termin egzaminu|zarezerwuj termin|rezerwacja terminu egzaminu)$/],
       ['pkk', /^(profil )?pkk$/],
-      ['next', /^(dalej|przejdz dalej)$/],
+      ['next', /^(nastepny|dalej|przejdz dalej)$/],
       ['search', /^(pokaz|wyszukaj|sprawdz|szukaj) termin/],
       ['payment', /^(zaplac|oplac|potwierdz rezerwacje)$/]
     ];
