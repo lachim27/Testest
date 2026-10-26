@@ -217,7 +217,10 @@
     // menu links like "Opłać egzamin" may exist on every page.
     var heading = document.querySelector(
       'main h1, [role="main"] h1, main h2, [role="main"] h2, h1, h2');
-    var relevant = heading ? norm(heading.textContent || heading.innerText) : body;
+    // Without a page heading, the text may include every global navigation
+    // link (including "Opłać egzamin") even on the homepage.
+    // Never interpret such a menu link as an active payment screen.
+    var relevant = heading ? norm(heading.textContent || heading.innerText) : '';
     return /podsumowanie rezerwacji|metoda platnosci|oplac egzamin|potwierdz rezerwacje|zaplac|numer rezerwacji/.test(relevant);
   }
   function scan() {
@@ -291,7 +294,63 @@
         return s === 'dalej' || s === 'przejdz dalej';
       }, 'next:' + stage)) return;
     }
-    report('Formularz wymaga wyboru lub zmienił układ. Możesz dokończyć ręcznie.');
+    var d = diagnose();
+    report('Brak kolejnego bezpiecznego kroku. ' +
+      (d.bookingAction ? 'Widzę przycisk rezerwacji, ale nie jest jednoznaczny. ' :
+       d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
+       'Nie widzę jednoznacznego przycisku „Zarezerwuj termin”. ') +
+      'Opcje → Diagnostyka → Kopiuj raport automatu.');
+  }
+  function diagnose() {
+    var a = [];
+    try { a = buttons(); } catch (_) {}
+    var names = a.map(name);
+    var kinds = [
+      ['start', /^(zarezerwuj|rezerwuj) termin|^rezerwacja terminu egzaminu/],
+      ['pkk', /^(profil )?pkk$/],
+      ['next', /^(dalej|przejdz dalej)$/],
+      ['search', /^(pokaz|wyszukaj|sprawdz|szukaj) termin/],
+      ['payment', /^(zaplac|oplac|potwierdz rezerwacje)$/]
+    ];
+    var controls = {};
+    kinds.forEach(function (v) {
+      controls[v[0]] = names.filter(function (n) {return v[1].test(n);}).length;
+    });
+    var elements = [];
+    try {
+      elements = Array.from(document.querySelectorAll(
+        'select, [role="combobox"], mat-select, .mat-mdc-select, input[type="radio"], input[type="date"]'))
+        .filter(visible);
+    } catch (_) {}
+    var fields = {profile:0,center:0,category:0,type:0,date:0,other:0};
+    elements.forEach(function (el) {
+      var label = '';
+      try {label = fieldLabel(el);} catch (_) {}
+      var key = /profil|pkk/.test(label) ? 'profile' :
+        /osrodek|word|mord/.test(label) ? 'center' :
+        /kategoria/.test(label) ? 'category' :
+        /rodzaj|typ egzamin/.test(label) ? 'type' :
+        /data|date|termin/.test(label) ? 'date' : 'other';
+      fields[key]++;
+    });
+    var body = norm((document.body && document.body.innerText || '').slice(0,20000));
+    return {
+      script:true, enabled:!!settings.enabled, stopped:!!stopped,
+      pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
+      actions:clicks, last:lastReport, wizard:elements.length>0,
+      controls:controls, fields:fields,
+      screen: /login|signin|authorize|logowanie|identity/.test(norm(location.pathname)) ? 'logowanie' :
+        /checkout|payment|platnosc|podsumowanie/.test(norm(location.pathname)) ? 'platnosc' :
+        /wybierz godzine|dostepne terminy egzaminow|lista terminow/.test(body) ? 'terminy' :
+        /rodzaj profilu|numer profilu|kategoria|osrodek/.test(body) ? 'formularz lub menu' : 'start/inne'
+    };
+  }
+  function retry() {
+    stopped = false; pending = null; clicks = 0; lastAction = 0;
+    changed = {}; awaitingResults = false; lastReport = '';
+    report('Ponowna próba przygotowania formularza.');
+    scan();
+    return diagnose();
   }
   function configure(cfg) {
     settings.enabled = !!(cfg && cfg.enabled);
@@ -307,7 +366,8 @@
     scan();
     return true;
   }
-  window.__zlapFormPrep = {configure:configure, scan:scan, stop:function () {
+  window.__zlapFormPrep = {configure:configure, scan:scan,
+    diagnose:diagnose, retry:retry, stop:function () {
     stopped = true;
     report('Lista terminów przejęta przez monitor.');
   }};
