@@ -101,7 +101,7 @@ class SlotMonitor(
     }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val portalFormPreparationEnabled: Boolean
-        get() = prefs.getBoolean("portal_form_preparation", false)
+        get() = prefs.getBoolean("portal_form_preparation", true)
     var portalFormPreparationStatus: String = "Wyłączone"
         private set
 
@@ -390,7 +390,13 @@ class SlotMonitor(
             WebViewCompat.addDocumentStartJavaScript(web, script, origins)
             val formPrepScript = activity.assets.open("portal-autostart.js")
                 .bufferedReader().use { it.readText() }
-            WebViewCompat.addDocumentStartJavaScript(web, formPrepScript, origins)
+            // Each full WebView navigation creates a fresh JavaScript realm.
+            // Initialize consent at document start, not only in onPageFinished:
+            // the portal also uses client-side routing after authentication.
+            val initialFormPrep = formPrepScript + "\nwindow.__zlapFormPrep && " +
+                "window.__zlapFormPrep.configure({enabled:" +
+                (if (portalFormPreparationEnabled) "true" else "false") + "});"
+            WebViewCompat.addDocumentStartJavaScript(web, initialFormPrep, origins)
             supported = true
             lastError = ""
         } catch (_: Exception) {
@@ -594,6 +600,9 @@ class SlotMonitor(
             when (message.optString("kind")) {
                 "form_prep" -> {
                     portalFormPreparationStatus = message.optString("status").take(160)
+                    if (!requestReady) {
+                        diagnostics = "Automat formularza: " + portalFormPreparationStatus
+                    }
                 }
                 "native_request_ready" -> {
                     val captured = NativeExamReader.capture(message)
@@ -611,8 +620,19 @@ class SlotMonitor(
                     }
                     diagnostics = if (captured != null) "Odczyt w tle gotowy." else nativeSetupIssue
                 }
-                "hook" -> { hookDetected = true; diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu." }
-                "candidate" -> { if (!requestReady) diagnostics = "Wykryto ścieżkę API: " + message.optString("path").take(100) + ". Sprawdzanie zgodności..." }
+                "hook" -> {
+                    hookDetected = true
+                    if (!portalFormPreparationEnabled)
+                        diagnostics = "Skrypt działa. Otwórz listę terminów egzaminu w portalu."
+                }
+                "candidate" -> {
+                    // /Reservations means the portal is alive, not that the
+                    // exam timetable has been selected. Don't overwrite the
+                    // helpful step-by-step form preparation status.
+                    val path = message.optString("path")
+                    if (!requestReady && path.contains("OneCenterExam", ignoreCase = true))
+                        diagnostics = "Wykryto API terminów: OneCenterExam."
+                }
                 "endpoint" -> { lastNetworkActivity = System.currentTimeMillis(); diagnostics = "Wykryto zapytanie o terminy. Analiza wyboru ośrodka i kategorii..." }
                 "body" -> diagnostics = "Portal wysłał zapytanie w innym formacie (nie JSON)."
                 "filter" -> diagnostics = "Wykryto API terminów, ale nie pasuje identyfikator ośrodka lub kategorii. Pola: " +
