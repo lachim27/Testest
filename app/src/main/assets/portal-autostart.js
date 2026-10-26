@@ -330,7 +330,7 @@
       });
     // The portal's navigation may mention PKK even on its homepage. The presence
     // of a label alone is not proof the reservation wizard is already open.
-    if (!hasWizard) {
+    if (!hasWizard && !changed['otwarcie zakładki Zarezerwuj termin egzaminu']) {
       if (uniqueClick(examMenuAction,
         'otwarcie zakładki Zarezerwuj termin egzaminu')) return;
       if (openExamMenuLeaf()) return;
@@ -359,9 +359,10 @@
     }
     var d = diagnose();
     report('Brak kolejnego bezpiecznego kroku. ' +
-      (d.bookingAction ? 'Widzę przycisk rezerwacji, ale nie jest jednoznaczny. ' :
-       d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
-       'Nie widzę jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
+      (d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
+       changed['otwarcie zakładki Zarezerwuj termin egzaminu'] ?
+       'Otworzono zakładkę, ale nie rozpoznano kolejnego pola. ' :
+       'Nie rozpoznano jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
       'Opcje → Diagnostyka → Kopiuj raport automatu.');
   }
   function diagnose() {
@@ -422,7 +423,8 @@
     return {
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
-      actions:clicks, last:lastReport, wizard:elements.length>0,
+      actions:clicks, last:lastReport,
+      wizard:elements.length>fields.other,
       controls:controls, fields:fields,
       otherTags:otherTags, embeddedFrames:embedded, shadowHosts:shadowHosts,
       menuTextVisible:menuLabelVisible,
