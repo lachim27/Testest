@@ -551,3 +551,59 @@ test('profile drop-down on homepage never looks like a hamburger button',()=>{
   assert.deepEqual(clicks,[]);
   assert.equal(wnd.__zlapFormPrep.diagnose().hamburgerCount,0);
 });
+
+
+test('CSS-only hamburger in verified top-left menu position can be opened',()=>{
+  const clicked=[];
+  const corner={
+    tagName:'DIV',isConnected:true,disabled:false,nodeType:1,
+    className:'left-control',parentElement:null,
+    innerText:'',textContent:'',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    getBoundingClientRect(){return {left:10,top:10,right:66,bottom:66,width:56,height:56};},
+    closest(){return null;},querySelector(){return null;},
+    click(){clicked.push('hamburger');}
+  };
+  const doc={
+    body:{innerText:'Witaj. Moje wnioski i rezerwacje. Status'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(){return [];},
+    elementFromPoint(){return corner;}
+  };
+  const wnd={innerWidth:393,setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible',cursor:'pointer'}),
+    {escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,['hamburger']);
+  assert.equal(wnd.__zlapFormPrep.diagnose().hamburgerCount,1);
+});
+
+test('CSS-only top-left probing is disabled outside verified homepage',()=>{
+  const clicked=[];
+  const corner={
+    tagName:'DIV',isConnected:true,disabled:false,nodeType:1,
+    className:'',parentElement:null,
+    getClientRects(){return [1];},
+    getBoundingClientRect(){return {left:10,top:10,right:66,bottom:66,width:56,height:56};},
+    getAttribute(){return null;},closest(){return null;},querySelector(){return null;},
+    click(){clicked.push('unsafe');}
+  };
+  const doc={
+    body:{innerText:'Szczegóły wniosku. Zapraszamy.'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(){return [];},elementFromPoint(){return corner;}
+  };
+  const wnd={innerWidth:393,setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible',cursor:'pointer'}),
+    {escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,[]);
+});
