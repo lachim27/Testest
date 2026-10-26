@@ -186,7 +186,12 @@
     if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
 
-    var hasWizard = /pkk|osrodek egzaminowania|kategoria prawa jazdy/.test(body);
+    var selectors = Array.from(document.querySelectorAll(
+      'select, [role="combobox"], mat-select')).filter(visible);
+    var hasWizard = /wybierz (profil|rodzaj profilu|osrodek|kategorie)|numer profilu/.test(body) ||
+      selectors.some(function (el) {
+        return /profil|pkk|osrodek|kategoria|rodzaj egzamin/.test(fieldLabel(el));
+      });
     if (!hasWizard && uniqueClick(function (s) {
       return s === 'zarezerwuj termin' || s === 'zarezerwuj termin egzaminu';
     }, 'otwarcie formularza')) return;
