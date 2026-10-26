@@ -1140,3 +1140,42 @@ test('no search when four radio inputs exist but none is safely label-associated
   assert.deepEqual(f.clicked,[]);
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,false);
 });
+
+
+test('prefetched term API must not stop practical exam radio screen before selection',()=>{
+  const bodyText = 'Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a. '+
+    'Wybór rodzaju egzaminu. Egzamin teoretyczny. Egzamin praktyczny. '+
+    'Egzamin łączony (Teoria + Praktyka). Wyświetl wszystkie typy egzaminu. '+
+    'Dostępne terminy egzaminów 28/10/2026 08:00';
+  const f=practicalScreen({bodyText});
+  // The native hook may see a OneCenterExam response even before user-facing
+  // "Egzamin praktyczny" is selected: do not allow its old premature stop.
+  assert.equal(f.wnd.__zlapFormPrep.stop(),false);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,false);
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioVerified,true);
+});
+
+test('manual stop is rejected before real result list is visible',()=>{
+  const f=practicalScreen();
+  assert.equal(f.wnd.__zlapFormPrep.stop(),false);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,false);
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('prefetched slots do not override combined-exam safety guard',()=>{
+  const bodyText='Wybór terminu egzaminu dla: MORD Kraków ul. Nowohucka 33a. '+
+    'Wybór rodzaju egzaminu. Egzamin teoretyczny. Egzamin praktyczny. '+
+    'Egzamin łączony (Teoria + Praktyka). Wyświetl wszystkie typy egzaminu. '+
+    'Dostępne terminy egzaminów 28/10/2026 08:00';
+  const f=practicalScreen({bodyText,misroute:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.equal(f.selected,'combined');
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,false);
+  assert.equal(f.wnd.__zlapFormPrep.stop(),false);
+  f.tick();
+  f.wnd.__zlapFormPrep.scan();
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,true);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioVerified,false);
+});
