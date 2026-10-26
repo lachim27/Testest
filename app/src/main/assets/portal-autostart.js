@@ -819,6 +819,24 @@
     if (/^div$/i.test(card.tagName||'')) return {node:card,already:false};
     return null;
   }
+  function bookingUiFindDateHeading(target) {
+    var matches=[];
+    try {
+      matches=Array.from(document.querySelectorAll('*')).filter(visible)
+        .filter(function(el){return bookingUiSafeText(el)===norm(target.label);});
+    } catch (_) {}
+    matches=matches.filter(function(el){
+      return !matches.some(function(other){
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    if (matches.length!==1) return null;
+    var heading=matches[0];
+    var btn=heading.closest && heading.closest(
+      'button, [role="button"], summary, [aria-expanded]');
+    // A date bar may have a JavaScript click handler on a plain div.
+    return btn && visible(btn) ? btn : heading;
+  }
   function bookingUiFindModal(target) {
     var dialogs=[];
     try {
@@ -854,8 +872,19 @@
     var target=bookingUi;
     if (Date.now()-target.started>25000) {
       target.done=true;
-      bookingUiReport('booking_ui_problem','Nie odnaleziono bezpiecznego potwierdzenia. Sprawdź Portal.');
+      bookingUiReport(target.stage==='expanding' ?
+        'booking_ui_no_card' : 'booking_ui_problem',
+        target.stage==='expanding' ?
+        'Po rozwinięciu daty nie widzę pasującej karty.' :
+        'Nie odnaleziono bezpiecznego potwierdzenia. Sprawdź Portal.');
       return;
+    }
+    if (target.stage==='expanding') {
+      var chosen=bookingUiFindCard(target);
+      if (!chosen) return;
+      target.stage='selected';
+      bookingUiReport('booking_ui_selected','Rozwinięto datę i wybrano pasujący egzamin.');
+      if (!chosen.already) chosen.node.click();
     }
     var result=bookingUiFindModal(target);
     if (!result) return;
@@ -884,11 +913,18 @@
     if (/platnosc|podsumowanie|zaplac|oplat/.test(norm(document.body.innerText||'')))
       return false;
     var match=bookingUiFindCard(target);
-    if (!match) return false;
+    var heading=match ? null : bookingUiFindDateHeading(target);
+    if (!match && !heading) return false;
     bookingUi={iso:iso,day:target.day,label:target.label,
-      hour:target.hour,started:Date.now(),done:false};
-    bookingUiReport('booking_ui_selected','Znaleziono pasującą kartę terminu.');
-    if (!match.already) match.node.click();
+      hour:target.hour,started:Date.now(),done:false,
+      stage:match ? 'selected' : 'expanding'};
+    if (match) {
+      bookingUiReport('booking_ui_selected','Znaleziono pasującą kartę terminu.');
+      if (!match.already) match.node.click();
+    } else {
+      bookingUiReport('booking_ui_expanding','Rozwijam dokładnie wskazaną datę.');
+      heading.click();
+    }
     // Angular dialog is asynchronous. A single interval observes it without
     // re-clicking the card or issuing HTTP requests.
     if (window.setInterval) {
