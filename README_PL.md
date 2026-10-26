@@ -70,3 +70,10 @@ Sama rezerwacja pozostaje w WebView, z dotychczasową ochroną przed ponawianiem
 
 ## Przywrócenie automatu po v0.15 (0.16)
 Walidacja odczytu natywnego przyjmuje również zagnieżdżone i mnogie nazwy endpointu OneCenterExams. Zapytania do rezerwacji i operacji zapisu pozostają wykluczone. Jeśli przekazanie zapytania nie dotarło do odczytu natywnego, aplikacja ponawia je lokalnie (bez kolejnego żądania HTTP i bez zużycia limitu). Status rozróżnia gotowość Portalu od gotowości odczytu w tle. Przy odrzuceniu formatu wyświetla samą ścieżkę API bez parametrów ani danych osobowych.
+
+## Alarm terminu i rezerwacji (0.17)
+W Ustawienia → Alarm dźwiękowy są dwa niezależne przełączniki (domyślnie włączone): po znalezieniu pasującego terminu oraz po potwierdzeniu rezerwacji. Alarm znalezienia działa również bez autorezerwacji, także przy pierwszym odczycie; respektuje zakres dat i godzin. Zapamiętana lista zapobiega dzwonieniu przy kolejnych identycznych odczytach i restarcie aplikacji. Termin, który zniknie i ponownie się pojawi, jest traktowany jako nowy.
+
+Alarm trwa najwyżej 2 minuty, korzysta z dźwięku alarmów i wibracji. Powiadomienie ma przyciski „Wycisz” i „Otwórz portal” (otwarcie także wycisza). Znalezienie jest wyraźnie opisane jako dostępność, bez potwierdzenia rezerwacji. Potwierdzona rezerwacja ma własny komunikat i ma pierwszeństwo przed alarmem znalezienia. Niepewna lub odrzucona rezerwacja nie uruchamia alarmu sukcesu. Nadal trzeba opłacić zajęty egzamin w portalu.
+
+Przycisk „Test alarmu” nie kontaktuje się z portalem i nie rezerwuje egzaminu. Wymagane są powiadomienia; Android może ograniczyć uruchamianie usługi w tle. Głośność alarmów, tryb Nie przeszkadzać i ustawienia urządzenia pozostają pod kontrolą użytkownika. Aplikacja nie zwiększa automatycznie głośności i nie omija DND. Powiadomienie może pojawić się na ekranie blokady zgodnie z jego ustawieniami; aplikacja nie wymusza pełnoekranowego połączenia. Przetestuj dźwięk i wyciszenie także przy zablokowanym ekranie.

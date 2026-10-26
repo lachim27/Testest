@@ -73,5 +73,5 @@ jobs:
           gh release create "android-beta-${GITHUB_RUN_NUMBER}" ZlapEgzamin-Android.apk \
             --target "${GITHUB_SHA}" \
             --title "ZlapEgzamin Android (#${GITHUB_RUN_NUMBER})" \
-            --notes "Wersja testowa z wyborem godzin autorezerwacji. Autorezerwacja po włączeniu wykonuje rzeczywiste zajęcie miejsca; płatność w portalu." \
+            --notes "Wersja testowa z alarmem nowego pasującego terminu i potwierdzonej rezerwacji. W ustawieniach dostępny test alarmu. Autorezerwacja wymaga włączenia; płatność w portalu." \
             --prerelease

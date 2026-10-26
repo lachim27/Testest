@@ -212,6 +212,10 @@ class DashboardActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent.getBooleanExtra("stop_exam_alarm", false)) {
+            ExamAlarmService.silence(this)
+            intent.removeExtra("stop_exam_alarm")
+        }
         window.statusBarColor = if (darkMode) Color.rgb(12, 19, 32) else Color.rgb(42, 110, 234)
         window.navigationBarColor = bg
         window.decorView.systemUiVisibility = if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -1049,6 +1053,29 @@ class DashboardActivity : Activity() {
         put(debug, action("Otwórz portal i ponów wybór egzaminu", false) { show("portal") })
         put(page, debug, 19)
 
+        val alarm = card()
+        put(alarm, text("ALARM DŹWIĘKOWY", 12f, blue, true), 12)
+        put(alarm, text("Dzwonek i wibracje do wyciszenia, maksymalnie 2 minuty. " +
+            "Nowy pasujący termin (także w pierwszym odczycie) i potwierdzona rezerwacja mają różne komunikaty. " +
+            "Alarm znalezienia uwzględnia zakres dat oraz godziny autorezerwacji i działa także bez włączonej autorezerwacji. " +
+            "Ta sama lista nie uruchamia go ponownie.", 14f, muted), 12)
+        put(alarm, action("Alarm po znalezieniu: " + (if (monitor.alarmOnFound) "TAK" else "NIE"), false) {
+            monitor.setAlarmOnFound(!monitor.alarmOnFound)
+            show("settings")
+        }, 10)
+        put(alarm, action("Alarm po rezerwacji: " + (if (monitor.alarmOnBooked) "TAK" else "NIE"), false) {
+            monitor.setAlarmOnBooked(!monitor.alarmOnBooked)
+            show("settings")
+        }, 10)
+        put(alarm, text("Korzysta z głośności alarmów. Tryb Nie przeszkadzać i ustawienia Androida mogą wyciszyć alarm. " +
+            "Włącz powiadomienia aplikacji i wykonaj test także przy zablokowanym ekranie.", 13f, muted), 10)
+        put(alarm, action("Test alarmu (zadzwoni teraz)") {
+            if (!monitor.testAlarm()) Toast.makeText(this,
+                "Nie można uruchomić alarmu. Włącz powiadomienia aplikacji w Androidzie.", Toast.LENGTH_LONG).show()
+        }, 10)
+        put(alarm, action("Wycisz alarm", false) { ExamAlarmService.silence(this) })
+        put(page, alarm, 19)
+
         val alerts = card()
         put(alerts, text("POWIADOMIENIA NA TELEFONIE", 12f, Color.rgb(143, 182, 255), true), 12)
         put(alerts, text("Domyślnie pierwszy prawdziwy odczyt ustala listę znanych terminów.", 14f, muted), 14)
@@ -1157,6 +1184,10 @@ class DashboardActivity : Activity() {
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getBooleanExtra("stop_exam_alarm", false)) {
+            ExamAlarmService.silence(this)
+            intent.removeExtra("stop_exam_alarm")
+        }
         if (intent.getBooleanExtra("open_portal", false)) show("portal")
     }
     @Deprecated("Deprecated in Java")

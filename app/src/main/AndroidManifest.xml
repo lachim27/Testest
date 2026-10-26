@@ -5,8 +5,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <application android:icon="@drawable/ic_zlapegzamin" android:label="ZłapEgzamin" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
         <service android:name=".MonitorForegroundService" android:exported="false" android:foregroundServiceType="dataSync" android:stopWithTask="false"/>
+        <service android:name=".ExamAlarmService" android:exported="false" android:foregroundServiceType="mediaPlayback" android:stopWithTask="false"/>
+        <receiver android:name=".ExamAlarmStopReceiver" android:exported="false"/>
         <activity android:name=".DashboardActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

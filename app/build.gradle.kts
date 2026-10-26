@@ -9,8 +9,8 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "0.16-native-query-capture"
+        versionCode = 15
+        versionName = "0.17-exam-alarms"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

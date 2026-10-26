@@ -108,6 +108,27 @@ class SlotMonitor(
             else "Wyłączono podtrzymywanie sesji w tle")
         onUpdate()
     }
+    val alarmOnFound: Boolean get() = prefs.getBoolean("alarm_on_found", true)
+    val alarmOnBooked: Boolean get() = prefs.getBoolean("alarm_on_booked", true)
+    fun setAlarmOnFound(value: Boolean) {
+        prefs.edit().putBoolean("alarm_on_found", value).remove("alarm_last_ids").apply()
+        if (!value) ExamAlarmService.silence(activity)
+        onUpdate()
+    }
+    fun setAlarmOnBooked(value: Boolean) {
+        prefs.edit().putBoolean("alarm_on_booked", value).apply()
+        if (!value) ExamAlarmService.silence(activity)
+        onUpdate()
+    }
+    fun testAlarm(): Boolean = ExamAlarmService.trigger(activity, "TEST alarmu ZłapEgzamin",
+        "To tylko test. Nie znaleziono ani nie zarezerwowano egzaminu. Wycisz przyciskiem w powiadomieniu.")
+    private fun ringAlarm(title: String, body: String, confirmed: Boolean = false) {
+        if (!ExamAlarmService.trigger(activity, title, body, confirmed)) {
+            lastError = "Nie uruchomiono alarmu. Sprawdź zgodę na powiadomienia i ograniczenia pracy w tle."
+            event(lastError)
+        }
+    }
+
     val notifyFirst: Boolean get() = prefs.getBoolean("notify_first", false)
     val autoReserveEnabled: Boolean get() = prefs.getBoolean("auto_reserve", false)
     val lastBookingStatus: String get() = prefs.getString("booking_status", "Nie próbowano") ?: "Nie próbowano"
@@ -704,6 +725,15 @@ class SlotMonitor(
             .apply()
 
         event("Odczyt: " + slotCount + " terminów" + if (newItems.isNotEmpty()) " (" + lastNewCount + " nowych)" else "")
+        val alarmMatches = ExamAlarmPolicy.matching(current, bookingTimeFrom, bookingTimeTo)
+        val newAlarmKeys = ExamAlarmPolicy.newKeys(alarmMatches,
+            prefs.getStringSet("alarm_last_ids", emptySet())?.toSet().orEmpty())
+        prefs.edit().putStringSet("alarm_last_ids", alarmMatches.keys.toSet()).apply()
+        if (enabled && alarmOnFound && newAlarmKeys.isNotEmpty()) {
+            val date = alarmMatches[newAlarmKeys.first()].orEmpty().replace('T', ' ').take(16)
+            ringAlarm("Znaleziono pasujący termin!",
+                "MORD Kraków, B: " + date + ". To dostępny termin, NIE potwierdzenie rezerwacji.")
+        }
         if (enabled && autoReserveEnabled) attemptBooking(current)
         if (enabled && newItems.isNotEmpty()) {
             val date = current[newItems.first()]?.replace('T', ' ')?.take(16) ?: ""
@@ -839,6 +869,7 @@ class SlotMonitor(
         diagnostics = "Serwer potwierdził " + message.optString("status") + "."
         event("Zajęto miejsce, ID " + reservationId.take(16))
         notify(body, "ZłapEgzamin – zarezerwowano miejsce!")
+        if (alarmOnBooked) ringAlarm("Potwierdzono rezerwację!", body, confirmed = true)
         sendTelegram("ZłapEgzamin: " + body)
         activity.stopService(Intent(activity, MonitorForegroundService::class.java))
         onUpdate()
