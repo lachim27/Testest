@@ -238,3 +238,51 @@ test('manual retry resets a paused setup and returns anonymized controls',()=>{
     'Zarezerwuj termin egzaminu','Zarezerwuj termin egzaminu'
   ]);
 });
+
+
+test('opens the exact Info-Kierowca menu item Zarezerwuj termin egzaminu',()=>{
+  const f=fixture('Usługi portalu po zalogowaniu',
+    ['Zarezerwuj termin egzaminu']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['Zarezerwuj termin egzaminu']);
+  assert.equal(f.window.__zlapFormPrep.diagnose().controls.start,1);
+});
+
+test('after choosing PKK the first wizard step can advance with Dalej',()=>{
+  let time=10000;
+  const clicked=[];
+  const radio={
+    isConnected:true,disabled:false,parentElement:null,nodeType:1,
+    value:'PKK',innerText:'PKK',getAttribute(){return null;},
+    getClientRects(){return [1];},click(){clicked.push('PKK');}
+  };
+  const next={
+    isConnected:true,disabled:false,parentElement:null,nodeType:1,
+    innerText:'Dalej',getAttribute(){return null;},
+    getClientRects(){return [1];},click(){clicked.push('Dalej');}
+  };
+  const document={
+    body:{innerText:'Wybierz rodzaj profilu PKK, ośrodek MORD Kraków'},
+    documentElement:null, addEventListener(){},
+    querySelector(){return null;},
+    querySelectorAll(q){
+      if(q==='input[type="radio"], [role="radio"], label')return [radio];
+      if(q==='input[type="radio"], input[type="date"]')return [radio];
+      if(q.startsWith('button,'))return [next];
+      return [];
+    }
+  };
+  const window={setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(){}}};
+  class FakeDate extends Date{static now(){return time;}}
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver','Date',source)(
+    window,document,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},
+    class{},class{},FakeDate
+  );
+  window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,['PKK']);
+  time+=2200;
+  window.__zlapFormPrep.scan();
+  assert.deepEqual(clicked,['PKK','Dalej']);
+});
