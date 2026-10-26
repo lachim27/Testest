@@ -157,11 +157,11 @@ test('portal home opens the booking service even when navigation mentions PKK', 
   assert.deepEqual(f.clicked,['Zarezerwuj termin egzaminu']);
 });
 
-function selectFixture(role, values) {
+function selectFixture(role, values, current = '') {
   const events=[];
   const select={
     nodeType:1, isConnected:true, disabled:false, parentElement:null,
-    id:'test-'+role, value:'', options:values.map((x,i)=>({
+    id:'test-'+role, value:current, options:values.map((x,i)=>({
       text:x, value:String(i+1), disabled:false
     })),
     getAttribute(name){return name==='aria-label'?role:null;},
@@ -193,10 +193,13 @@ function selectFixture(role, values) {
   return {select,events};
 }
 
-test('selects category B without choosing theory or other categories', () => {
-  const f=selectFixture('Kategoria', ['Wybierz kategorię','A','B','C']);
+test('leaves category B chosen by portal untouched', () => {
+  const f=selectFixture('Kategoria', ['Wybierz kategorię','A','B','C'], '3');
+  f.select.selectedIndex=2;
   assert.equal(f.select.value,'3');
-  assert.deepEqual(f.events,['input','change']);
+  assert.deepEqual(f.events,[]);
+  const info=f.select && f.select.getAttribute('aria-label');
+  assert.equal(info,'Kategoria');
 });
 
 test('selects only exactly named MORD Kraków headquarters', () => {
@@ -621,12 +624,12 @@ test('follows PKK -> single profile -> B -> explicit WORD -> Krakow Nowohucka ->
     getClientRects(){return [1];},closest(){return null;},
     dispatchEvent(){}};
   let category={tagName:'SELECT',nodeType:1,isConnected:true,disabled:true,
-    parentElement:null,id:'category',value:'',options:[
+    parentElement:null,id:'category',value:'B',selectedIndex:1,options:[
       {text:'Wybierz z listy',value:'',disabled:false},
       {text:'B',value:'B',disabled:false}],
     getAttribute(k){return k==='aria-label'?'Kategoria':null;},
     getClientRects(){return [1];},closest(){return null;},
-    dispatchEvent(){},};
+    dispatchEvent(){throw Error('preselected category must not be changed');},};
   const originalProfileDispatch=profile.dispatchEvent;
   profile.dispatchEvent=function(e){if(e.type==='change')category.disabled=false;};
   const makeRadio=(title,kind,onClick,checked)=>({
@@ -708,4 +711,94 @@ test('no automatic reservation or payment buttons are pressed',()=>{
     ['Następny','Potwierdź rezerwację','Zapłać']);
   f.window.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(f.clicked,[]);
+});
+
+
+test('preselected category B is reported from native field without clicking',()=>{
+  const events=[];
+  const category={
+    tagName:'SELECT', nodeType:1, isConnected:true, disabled:false,
+    parentElement:null, id:'category',value:'B',selectedIndex:1,
+    options:[{text:'Wybierz z listy',value:''},{text:'B',value:'B'}],
+    getAttribute(k){return k==='aria-label'?'Kategoria':null;},
+    getClientRects(){return [1];},closest(){return null;},
+    dispatchEvent(){events.push('changed');}
+  };
+  const doc={body:{innerText:'Profil i WORD. Kategoria: B'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q==='select')return [category];
+      if(q.startsWith('select, input, [role="combobox"]'))return [category];
+      return [];
+    }};
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  const report=wnd.__zlapFormPrep.diagnose();
+  assert.equal(report.setupSteps.categoryB,true);
+  assert.equal(report.setupSteps.categoryReadable,true);
+  assert.deepEqual(events,[]);
+});
+
+test('explicitly selected category A blocks wizard advancement',()=>{
+  const clicked=[];
+  const category={
+    tagName:'SELECT',nodeType:1,isConnected:true,disabled:false,
+    parentElement:null,id:'category',value:'A',selectedIndex:1,
+    options:[{text:'Wybierz z listy',value:''},{text:'A',value:'A'}],
+    getAttribute(k){return k==='aria-label'?'Kategoria':null;},
+    getClientRects(){return [1];},closest(){return null;},
+    dispatchEvent(){throw Error('should never overwrite an explicit different category');}
+  };
+  const next={
+    nodeType:1,isConnected:true,disabled:false,parentElement:null,
+    innerText:'Następny',textContent:'Następny',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    click(){clicked.push('Następny');}
+  };
+  const doc={
+    body:{innerText:'Wybór rodzaju profilu. Kategoria. Wybór ośrodka egzaminacyjnego WORD'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('select, input, [role="combobox"]'))return [category];
+      if(q.startsWith('button, a, [role="button"]'))return [next];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,[]);
+  assert.equal(wnd.__zlapFormPrep.diagnose().setupSteps.categoryPreset,false);
+});
+
+test('category B preset on a custom combobox is read without a click',()=>{
+  const combo={
+    tagName:'DIV',nodeType:1,isConnected:true,disabled:false,
+    parentElement:null,id:'c',innerText:'B',textContent:'B',
+    getAttribute(k){return k==='aria-label'?'Kategoria':null;},
+    getClientRects(){return [1];},closest(){return null;},
+    click(){throw Error('category combobox must not be reopened');}
+  };
+  const doc={
+    body:{innerText:'Profil i WORD. Kategoria B'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('select, input, [role="combobox"]'))return [combo];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.equal(wnd.__zlapFormPrep.diagnose().setupSteps.categoryB,true);
 });
