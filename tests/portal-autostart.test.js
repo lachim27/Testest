@@ -992,3 +992,99 @@ test('booking UI expands exact December 17 heading before selecting 06:00',()=>{
   assert.ok(f.events.some(x=>x.kind==='booking_ui_expanding'));
   assert.ok(f.events.some(x=>x.kind==='booking_ui_advanced'));
 });
+
+
+// 0.31: the user's actual second-step screenshot displays FOUR radio choices,
+// not a select or combobox. Default is "Wyświetl wszystkie typy egzaminu".
+function practicalScreen(opts={}) {
+  const clicked=[],events=[];
+  let selected=!!opts.practicalSelected;
+  const bodyText = opts.bodyText || (
+    'Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a. '+
+    'Wybór rodzaju egzaminu. Egzamin teoretyczny. Egzamin praktyczny. '+
+    'Egzamin łączony (Teoria + Praktyka). Wyświetl wszystkie typy egzaminu. '+
+    'Wybór daty początkowej dla dostępnych egzaminów'
+  );
+  const option=(txt,id)=>{
+    const item={
+      nodeType:1,tagName:'LABEL',disabled:false,isConnected:true,
+      parentElement:null,innerText:txt,textContent:txt,
+      getAttribute(){return null;},
+      getClientRects(){return [1];},
+      closest(){return null;},
+      contains(other){return other===item;},
+      querySelector(q) {
+        return q.includes(':checked') && (
+          (id==='practical' && selected) || (id==='all' && !selected))?{}:null;
+      },
+      click(){
+        clicked.push(id);
+        if(id==='practical')selected=true;
+      }
+    };
+    return item;
+  };
+  const practical=option('Egzamin praktyczny','practical');
+  const list=[
+    option('Egzamin teoretyczny','theory'),
+    practical,
+    option('Egzamin łączony (Teoria + Praktyka)','combined'),
+    option('Wyświetl wszystkie typy egzaminu','all')
+  ];
+  if(opts.duplicated)list.push(option('Egzamin praktyczny','practical-duplicate'));
+  const doc={
+    body:{innerText:bodyText},documentElement:null,addEventListener(){},
+    querySelector(){return null;},
+    querySelectorAll(q) {
+      if(q.startsWith('label, [role="radio"]')) return list;
+      return [];
+    }
+  };
+  const wnd={
+    setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(raw){events.push(JSON.parse(raw));}}
+  };
+  const fakeClock=class extends Date{static now(){return 10000;}};
+  new Function('window','document','location','getComputedStyle','CSS',
+    'Event','MutationObserver','Date',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{},fakeClock
+  );
+  return {wnd,clicked,events,get selected(){return selected;}};
+}
+
+test('second wizard step selects only practical B exam radio instead of all types',()=>{
+  const f=practicalScreen();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.selected,true);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,true);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioScreen,true);
+  f.wnd.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,['practical']);
+});
+
+test('already checked practical radio is not toggled',()=>{
+  const f=practicalScreen({practicalSelected:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,true);
+});
+
+test('ambiguous or duplicated practical radio cannot cause a blind selection',()=>{
+  const f=practicalScreen({duplicated:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('practical radio is not clicked on results, booking summary or unrelated page',()=>{
+  for(const bodyText of [
+    'Dostępne terminy egzaminów: Egzamin praktyczny KAT B',
+    'Podsumowanie rezerwacji. Potwierdź wybrany egzamin. Egzamin praktyczny',
+    'Wybór rodzaju egzaminu. Egzamin praktyczny. Wyświetl wszystkie typy egzaminu'
+  ]){
+    const f=practicalScreen({bodyText});
+    f.wnd.__zlapFormPrep.configure({enabled:true});
+    assert.deepEqual(f.clicked,[]);
+  }
+});
