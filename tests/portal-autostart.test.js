@@ -146,3 +146,69 @@ test('date is not overwritten if user has already selected one',()=>{
   wnd.__zlapFormPrep.configure({enabled:true});
   assert.equal(field.value,'2026-11-02');
 });
+
+
+// A portal home screen may mention PKK in a sidebar, but the primary booking
+// button still needs clicking. It is not itself proof that the form is open.
+test('portal home opens the booking service even when navigation mentions PKK', () => {
+  const f=fixture('Portal e-usług: numer profilu PKK, sprawy, informacje',
+    ['Zarezerwuj termin egzaminu']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['Zarezerwuj termin egzaminu']);
+});
+
+function selectFixture(role, values) {
+  const events=[];
+  const select={
+    nodeType:1, isConnected:true, disabled:false, parentElement:null,
+    id:'test-'+role, value:'', options:values.map((x,i)=>({
+      text:x, value:String(i+1), disabled:false
+    })),
+    getAttribute(name){return name==='aria-label'?role:null;},
+    getClientRects(){return [1];},
+    closest(){return null;},
+    dispatchEvent(e){events.push(e.type);}
+  };
+  const document={
+    body:{innerText:'Wybierz profil PKK, kategorię B, ośrodek, rodzaj egzaminu'},
+    documentElement:null, addEventListener(){},
+    querySelectorAll(query){
+      if (query==='select') return [select];
+      if (query==='select, [role="combobox"], mat-select') return [select];
+      return [];
+    },
+    querySelector(){return null;}
+  };
+  const window={
+    setInterval(){}, MutationObserver:null,
+    ZlapBridge:{postMessage(){}}
+  };
+  const setup=new Function('window','document','location',
+    'getComputedStyle','CSS','Event','MutationObserver', source);
+  setup(window,document,{
+      protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'
+    },()=>({display:'block',visibility:'visible'}),
+    {escape:v=>v},class {constructor(t){this.type=t;}},class {});
+  window.__zlapFormPrep.configure({enabled:true});
+  return {select,events};
+}
+
+test('selects category B without choosing theory or other categories', () => {
+  const f=selectFixture('Kategoria', ['Wybierz kategorię','A','B','C']);
+  assert.equal(f.select.value,'3');
+  assert.deepEqual(f.events,['input','change']);
+});
+
+test('selects only exactly named MORD Kraków headquarters', () => {
+  const f=selectFixture('Ośrodek egzaminowania',
+    ['MORD Kraków/O Kraków','MORD Kraków','MORD Kraków /O Oświęcim']);
+  assert.equal(f.select.value,'2');
+  assert.deepEqual(f.events,['input','change']);
+});
+
+test('does not guess if only different MORD branches are offered', () => {
+  const f=selectFixture('Ośrodek egzaminowania',
+    ['MORD Kraków/O Kraków','MORD Kraków /O Oświęcim']);
+  assert.equal(f.select.value,'');
+  assert.deepEqual(f.events,[]);
+});
