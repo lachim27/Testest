@@ -377,6 +377,7 @@ test('opens the hamburger on the logged-in requests homepage',()=>{
     innerText:'',textContent:'',
     getAttribute(k){return k==='aria-label'?'Menu':null;},
     getClientRects(){return [1];},
+    getBoundingClientRect(){return {left:18,right:72,top:13,bottom:67,width:54,height:54};},
     closest(){return null;}, querySelector(){return null;},
     click(){clicks.push('hamburger');}
   };
@@ -483,4 +484,70 @@ test('opens profile number custom combobox from floating field label',()=>{
   );
   wnd.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(clicked,['profile dropdown']);
+});
+
+
+test('a genuine three-bar SVG under the home header opens the menu',()=>{
+  const clicks=[];
+  const lines=[9,14,19].map(y=>({getAttribute(k){return k==='y1'||k==='y2'?String(y):null;}}));
+  const svg={
+    tagName:'svg',isConnected:true,nodeType:1,disabled:false,
+    parentElement:null,className:'',getAttribute(){return null;},
+    getClientRects(){return [1];},
+    getBoundingClientRect(){return {left:35,right:57,top:25,bottom:47,width:22,height:22};},
+    querySelector(){return null;},
+    querySelectorAll(q){return q==='line'?lines:[];},
+    closest(){return null;},contains(){return false;},
+    click(){clicks.push('svg menu');}
+  };
+  const doc={
+    body:{innerText:'Witaj, Moje wnioski i rezerwacje, Status'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    elementFromPoint(){return svg;},
+    querySelectorAll(q){
+      if(q.includes('[class*="hamburger"]') && q.startsWith('button,'))return [svg];
+      if(q==='select, [role="combobox"], mat-select')return [];
+      return [];
+    }
+  };
+  const wnd={innerWidth:393,setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicks,['svg menu']);
+  const diag=wnd.__zlapFormPrep.diagnose();
+  assert.equal(diag.onHomePage,true);
+  assert.equal(diag.menuOpened,true);
+  assert.equal(diag.hamburgerCount,1);
+});
+
+test('profile drop-down on homepage never looks like a hamburger button',()=>{
+  const clicks=[];
+  const status={
+    isConnected:true,nodeType:1,disabled:false,className:'',
+    innerText:'Status',textContent:'Status',tagName:'DIV',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    getBoundingClientRect(){return {left:26,right:360,top:220,bottom:270,width:334,height:50};},
+    querySelector(){return null;},closest(){return null;},
+    click(){clicks.push('status');}
+  };
+  const doc={
+    body:{innerText:'Moje wnioski i rezerwacje. Rezerwacje. Status'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    elementFromPoint(){return status;},
+    querySelectorAll(q){
+      if(q.includes('[class*="hamburger"]') && q.startsWith('button,'))return [status];
+      return [];
+    }
+  };
+  const wnd={innerWidth:393,setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicks,[]);
+  assert.equal(wnd.__zlapFormPrep.diagnose().hamburgerCount,0);
 });
