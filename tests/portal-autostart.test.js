@@ -248,7 +248,7 @@ test('opens the exact Info-Kierowca menu item Zarezerwuj termin egzaminu',()=>{
   assert.equal(f.window.__zlapFormPrep.diagnose().controls.start,1);
 });
 
-test('after choosing PKK the first wizard step can advance with Dalej',()=>{
+test('does not press Dalej before selecting profile, category and center',()=>{
   let time=10000;
   const clicked=[];
   const radio={
@@ -267,7 +267,7 @@ test('after choosing PKK the first wizard step can advance with Dalej',()=>{
     documentElement:null, addEventListener(){},
     querySelector(){return null;},
     querySelectorAll(q){
-      if(q==='input[type="radio"], [role="radio"], label')return [radio];
+      if(q.startsWith('label, [role="radio"]'))return [radio];
       if(q==='input[type="radio"], input[type="date"]')return [radio];
       if(q.startsWith('button,'))return [next];
       return [];
@@ -285,7 +285,7 @@ test('after choosing PKK the first wizard step can advance with Dalej',()=>{
   assert.deepEqual(clicked,['PKK']);
   time+=2200;
   window.__zlapFormPrep.scan();
-  assert.deepEqual(clicked,['PKK','Dalej']);
+  assert.deepEqual(clicked,['PKK']); // incomplete form, stay on step one
 });
 
 
@@ -606,4 +606,106 @@ test('CSS-only top-left probing is disabled outside verified homepage',()=>{
   );
   wnd.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(clicked,[]);
+});
+
+
+// End-to-end reproduction of the user's screenshots of "Profil i WORD".
+// No personal profile number is transmitted; only fake values in mocks.
+test('follows PKK -> single profile -> B -> explicit WORD -> Krakow Nowohucka -> Nastepny',()=>{
+  const clicked=[]; let tick=10000; let radioChecked=false; let wordChecked=false;
+  let profile={tagName:'SELECT',nodeType:1,isConnected:true,disabled:false,
+    parentElement:null,id:'profile',value:'',options:[
+      {text:'Wybierz z listy',value:'',disabled:false},
+      {text:'PKK 12345678901',value:'one',disabled:false}],
+    getAttribute(k){return k==='aria-label'?'Numer profilu':null;},
+    getClientRects(){return [1];},closest(){return null;},
+    dispatchEvent(){}};
+  let category={tagName:'SELECT',nodeType:1,isConnected:true,disabled:true,
+    parentElement:null,id:'category',value:'',options:[
+      {text:'Wybierz z listy',value:'',disabled:false},
+      {text:'B',value:'B',disabled:false}],
+    getAttribute(k){return k==='aria-label'?'Kategoria':null;},
+    getClientRects(){return [1];},closest(){return null;},
+    dispatchEvent(){},};
+  const originalProfileDispatch=profile.dispatchEvent;
+  profile.dispatchEvent=function(e){if(e.type==='change')category.disabled=false;};
+  const makeRadio=(title,kind,onClick,checked)=>({
+    tagName:'LABEL',nodeType:1,isConnected:true,disabled:false,
+    parentElement:null,innerText:title,textContent:title,
+    getAttribute(){return null;},getClientRects(){return [1];},
+    querySelector(q){return q.includes(':checked')&&checked()?{}:null;},
+    contains(other){return other===this;},click:onClick,closest(){return null;}
+  });
+  const pkk=makeRadio('PKK - Profil kandydata na kierowcę (PKK)','pkk',()=>{
+    clicked.push('PKK');radioChecked=true;},()=>radioChecked);
+  const pkz=makeRadio('PKZ - Profil kierowcy zawodowego (PKZ)','pkz',()=>{
+    throw Error('must never pick PKZ');},()=>false);
+  const nearest=makeRadio('Pokaż tylko najbliższe terminy dla ośrodków WORD w okolicy',
+    'nearest',()=>{throw Error('nearest is not the requested center');},()=>!wordChecked);
+  const all=makeRadio('Wybierz ośrodek WORD i pokaż wszystkie terminy egzaminów',
+    'all',()=>{clicked.push('WORD mode');wordChecked=true;},()=>wordChecked);
+  const card={
+    tagName:'DIV',nodeType:1,isConnected:true,disabled:false,parentElement:null,
+    innerText:'Kraków - 18,5 km Nowohucka 33a, Kraków',
+    textContent:'Kraków - 18,5 km Nowohucka 33a, Kraków',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    contains(other){return other===this;},
+    click(){clicked.push('Kraków Nowohucka');}
+  };
+  const balicka={
+    ...card,innerText:'Kraków/O Kraków Balicka 127, Kraków',
+    textContent:'Kraków/O Kraków Balicka 127, Kraków',
+    click(){throw Error('wrong location');}
+  };
+  const next={
+    tagName:'BUTTON',nodeType:1,isConnected:true,disabled:false,parentElement:null,
+    innerText:'Następny',textContent:'Następny',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    click(){clicked.push('Następny');}
+  };
+  const body={innerText:'Wybór rodzaju profilu. PKK - Profil kandydata na kierowcę (PKK). '+
+    'Wybór numeru profilu i kategorii. Numer profilu. Kategoria. '+
+    'Wybór ośrodka egzaminacyjnego WORD. '+
+    'Pokaż tylko najbliższe terminy dla ośrodków WORD w okolicy. '+
+    'Wybierz ośrodek WORD i pokaż wszystkie terminy egzaminów. '+
+    'Kraków - 18,5 km Nowohucka 33a, Kraków'};
+  const doc={
+    body,documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('label, [role="radio"]'))return [pkk,pkz,nearest,all];
+      if(q==='select')return [profile,category];
+      if(q==='input[type="radio"], input[type="date"]')return [];
+      if(q.startsWith('button, a, [role="button"]'))return [next];
+      if(q.startsWith('label, li, [role="radio"]'))return [card,balicka];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  class FakeDate extends Date{static now(){return tick;}}
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver','Date',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},
+    class {constructor(t){this.type=t;}},class{},FakeDate
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  for(let i=0;i<9;i++){tick+=1900;wnd.__zlapFormPrep.scan();}
+  assert.deepEqual(clicked,['PKK','WORD mode','Kraków Nowohucka','Następny']);
+  assert.equal(profile.value,'one');
+  assert.equal(category.value,'B');
+});
+
+test('ambiguous Krakow Nowohucka center cards are never chosen at random',()=>{
+  // Center selection must uniquely identify Nowohucka 33a, not an alternate
+  // branch or two elements with the same address.
+  const f=fixture('Wybór ośrodka egzaminacyjnego WORD',
+    ['Kraków/O Kraków Balicka']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('no automatic reservation or payment buttons are pressed',()=>{
+  const f=fixture('Podsumowanie rezerwacji, wybór metody płatności',
+    ['Następny','Potwierdź rezerwację','Zapłać']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
 });
