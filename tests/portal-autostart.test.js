@@ -818,7 +818,7 @@ test('diagnostics recognize screenshot Następny → as wizard next',()=>{
   assert.deepEqual(f.clicked,[]);
 });
 
-test('do not click disabled Następny → even if fields were selected',()=>{
+test('do not click Następny → without previous field selections',()=>{
   const f=fixture('Wybór rodzaju profilu. Wybór ośrodka egzaminacyjnego WORD',
     ['Następny →']);
   // Fixture has no current selections and must never click automatically.
@@ -831,4 +831,34 @@ test('do not confuse Następny reservation confirmation with wizard navigation',
     ['Następny →','Potwierdź rezerwację']);
   f.window.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(f.clicked,[]);
+});
+
+
+test('diagnostics expose disabled Następny without clicking it',()=>{
+  const next={
+    nodeType:1,tagName:'BUTTON',isConnected:true,disabled:true,
+    parentElement:null,innerText:'Następny →',textContent:'Następny →',
+    getAttribute(k){return k==='aria-disabled'?'true':null;},
+    getClientRects(){return [1];},click(){throw Error('disabled button clicked');}
+  };
+  const doc={
+    body:{innerText:'Wybór rodzaju profilu. Wybór ośrodka egzaminacyjnego WORD'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q==='button, a, [role="button"], input[type="submit"], input[type="button"]')
+        return [next];
+      if(q.startsWith('button, a, [role="button"]'))return [next];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  const diag=wnd.__zlapFormPrep.diagnose();
+  assert.equal(diag.nextDiagnostics.rawCandidates,1);
+  assert.equal(diag.nextDiagnostics.enabledCandidates,0);
+  assert.equal(diag.nextDiagnostics.disabledCandidates,1);
 });
