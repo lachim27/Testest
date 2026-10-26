@@ -390,7 +390,7 @@
       return true;
     }
     var regex = pending === 'osrodek' ?
-      /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/ :
+      /^(mord krakow|krakow|malopolski osrodek ruchu drogowego w krakowie)$/ :
       pending === 'kategoria' ? /^(kategoria\s+)?b$/ :
       pending === 'praktyczny' ? /^(egzamin\s+)?(praktyka|praktyczny)$/ :
       pending === 'profil PKK' ? /^pkk$/ : null;
@@ -400,7 +400,12 @@
           return value && !/^(wybierz|wybierz profil|brak profilu|dodaj|utworz)/.test(value) &&
             !/\bpkz\b/.test(value);
         })
-      : regex ? options.filter(function (el) { return regex.test(name(el)); }) : [];
+      : pending === 'osrodek' ? options.filter(function (el) {
+          var val=name(el);
+          return regex.test(val) || (val.length < 130 &&
+            /krakow/.test(val) && /nowohucka\s*33\s*a/.test(val) &&
+            !/balicka/.test(val));
+        }) : regex ? options.filter(function (el) { return regex.test(name(el)); }) : [];
     if (matches.length === 1) {
       var which = pending;
       pending = null;
@@ -738,6 +743,14 @@
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
+      setupSteps:{
+        pkk:!!changed['profil PKK'],
+        profile:!!(changed['numer PKK'] || changed['jedyny profil PKK']),
+        categoryB:!!changed['kategoria'],
+        specificWord:!!changed['wybór WORD'],
+        centerNowohucka:!!changed['ośrodek Kraków'],
+        nextStep:!!changed['przejście Profil i WORD']
+      },
       wizard:elements.length>fields.other,
       controls:controls, fields:fields,
       otherTags:otherTags, embeddedFrames:embedded, shadowHosts:shadowHosts,
