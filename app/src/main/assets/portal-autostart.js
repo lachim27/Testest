@@ -786,15 +786,17 @@
     // The real exam-type screen has FOUR radio inputs. No fallback to
     // a select/combobox or search action until the PRACTICAL input is
     // visibly/semantically checked. This also stops a misselected combined exam.
-    if (practicalRadioScreen(body)) {
+    var exactPracticalRadioScreen=practicalRadioScreen(body);
+    if (exactPracticalRadioScreen) {
       if (choosePracticalExamRadio()) return;
       if (!practicalRadioVerified()) return;
+    } else {
+      // Only other portal layouts may use a genuine select or combobox.
+      // Never use their broad labels on the known four-radio screen.
+      if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
+          /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
+      if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
     }
-    // Other portal layouts may have explicit selects; preserve them only
-    // outside the four-radio screen.
-    if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
-        /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
-    if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
     if (fillDateFrom()) return;
 
     var selectors = Array.from(document.querySelectorAll(
