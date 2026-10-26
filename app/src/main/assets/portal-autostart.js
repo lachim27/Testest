@@ -333,6 +333,41 @@
     }
     return updateSelect(fields[0], matches[0], reason);
   }
+
+  // Category B is already selected by the user's portal/profile.
+  // Read it where possible, without changing it or opening the dropdown.
+  function categoryStatus() {
+    var nodes = [];
+    try {
+      nodes = Array.from(document.querySelectorAll(
+        'select, input, [role="combobox"], mat-select, .mat-mdc-select,' +
+        ' .MuiSelect-select, .p-dropdown-label, .p-select, .ant-select-selection-item'
+      )).filter(visible).filter(function(el) {
+        return /kategoria/.test(fieldLabel(el));
+      });
+    } catch (_) { return 'unknown'; }
+    var values = [];
+    nodes.forEach(function(el) {
+      try {
+        var val = '';
+        if (norm(el.tagName) === 'select' && el.options && el.selectedIndex >= 0) {
+          val = el.options[el.selectedIndex].text || '';
+        } else {
+          val = el.value || el.getAttribute('data-value') ||
+            el.getAttribute('aria-valuetext') ||
+            el.innerText || el.textContent || '';
+        }
+        var selected = norm(val).replace(/^kategoria\s*:?\s*/, '').replace(/\*$/, '').trim();
+        if (selected && selected.length < 20 &&
+            !/^(wybierz|select|--)/.test(selected)) values.push(selected);
+      } catch (_) {}
+    });
+    if (values.some(function(v){return v==='b' || v==='kat b';})) return 'B';
+    if (values.some(function(v){
+      return /^(a|a1|a2|am|b1|be|b\+e|c|c1|ce|d|d1|de|t)$/.test(v);
+    })) return 'other';
+    return 'unknown';
+  }
   // A single uniquely identified PKK may be selected; never guess between profiles.
   // Some builds of the portal use a native select, others use a styled combobox.
   function chooseSingleProfile() {
@@ -609,8 +644,12 @@
     if ((changed['profil PKK'] || /numer profilu/.test(body)) &&
         openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/))
       return;
-    if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
-    if (openCombobox('kategoria', /kategoria/)) return;
+    // Category B is preselected by the portal; do not click this field.
+    // Detect an explicitly different category before advancing.
+    if (categoryStatus() === 'other') {
+      report('Wybrano inną kategorię niż B. Sprawdź formularz ręcznie.');
+      return;
+    }
 
     // The actual screen initially checks "nearest WORDs", which is NOT
     // specific to MORD Kraków. Choose the explicitly named mode, then the
@@ -666,7 +705,7 @@
         changed['profil PKK'] && changed['wybór WORD'] &&
         changed['ośrodek Kraków'] &&
         (changed['jedyny profil PKK'] || changed['numer PKK']) &&
-        changed['kategoria']) {
+        categoryStatus() !== 'other') {
       if (!changed['przejście Profil i WORD'] &&
           uniqueClick(function(txt){
             return txt==='nastepny' || txt==='dalej' ||
@@ -746,7 +785,9 @@
       setupSteps:{
         pkk:!!changed['profil PKK'],
         profile:!!(changed['numer PKK'] || changed['jedyny profil PKK']),
-        categoryB:!!changed['kategoria'],
+        categoryB:categoryStatus()==='B',
+        categoryPreset:categoryStatus()!=='other',
+        categoryReadable:categoryStatus()!=='unknown',
         specificWord:!!changed['wybór WORD'],
         centerNowohucka:!!changed['ośrodek Kraków'],
         nextStep:!!changed['przejście Profil i WORD']
