@@ -46,8 +46,9 @@
       .filter(visible);
   }
   function name(el) {
-    return norm(el.getAttribute('aria-label') || el.innerText ||
-      el.textContent || el.value || el.getAttribute('title') || '');
+    // Prefer visible labels. In portal navigation aria-label may be generic.
+    return norm(el.innerText || el.textContent ||
+      el.getAttribute('aria-label') || el.value || el.getAttribute('title') || '');
   }
   function click(el, reason) {
     if (!visible(el) || Date.now() - lastAction < 1700 || clicks >= maxClicks) return false;
@@ -76,7 +77,10 @@
   }
   function updateSelect(select, option, reason) {
     if (!option || select.value === option.value) return false;
-    select.value = option.value;
+    var setter = window.HTMLSelectElement && Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype, 'value');
+    if (setter && setter.set) setter.set.call(select, option.value);
+    else select.value = option.value;
     select.dispatchEvent(new Event('input', {bubbles:true}));
     select.dispatchEvent(new Event('change', {bubbles:true}));
     changed[reason] = true;
@@ -138,7 +142,8 @@
     var options = Array.from(document.querySelectorAll(
       '[role="option"], mat-option, .mat-mdc-option, .ng-option')).filter(visible);
     if (!options.length) { pending = null; return false; }
-    var regex = pending === 'osrodek' ? /^mord krakow(\b|$)/ :
+    var regex = pending === 'osrodek' ?
+      /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/ :
       pending === 'kategoria' ? /^(kategoria\s+)?b$/ :
       pending === 'praktyczny' ? /^(egzamin\s+)?(praktyka|praktyczny)$/ :
       pending === 'profil PKK' ? /^pkk$/ : null;
@@ -238,9 +243,9 @@
     if (selectOpenOption()) return;
     if (chooseProfileType()) return;
     if (chooseSingleProfile()) return;
-    if (selectNative('osrodek', /(osrodek|word|mord|centrum egzamin)/,
-        /^mord krakow(\b|$)/)) return;
     if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
+    if (selectNative('osrodek', /(osrodek|word|mord|centrum egzamin)/,
+        /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/)) return;
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
         /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
     if (fillDateFrom()) return;
@@ -248,8 +253,8 @@
     // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
     if (changed['profil PKK'] &&
         openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/)) return;
-    if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
     if (openCombobox('kategoria', /kategoria/)) return;
+    if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
 
     var selectors = Array.from(document.querySelectorAll(
@@ -261,8 +266,8 @@
     // The portal's navigation may mention PKK even on its homepage. The presence
     // of a label alone is not proof the reservation wizard is already open.
     if (!hasWizard && uniqueClick(function (s) {
-      return /^zarezerwuj termin( egzaminu)?$/.test(s) ||
-        /^zarezerwuj termin egzaminu( panstwowego)?$/.test(s);
+      return /^(zarezerwuj|rezerwuj) termin( egzaminu( panstwowego)?)?$/.test(s) ||
+        s === 'rezerwacja terminu egzaminu';
     }, 'otwarcie formularza')) return;
 
     // Search action is only used once criteria are visible, never on a list of slots.
