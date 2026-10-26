@@ -1075,6 +1075,7 @@ test('second wizard step selects only practical B exam radio instead of all type
   assert.deepEqual(f.clicked,['practical']);
   assert.equal(f.selected,'practical');
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,true);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioSelected,'praktyczny');
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioScreen,true);
   f.wnd.__zlapFormPrep.scan();
   assert.deepEqual(f.clicked,['practical']);
@@ -1112,6 +1113,7 @@ test('if portal selects combined despite practical click, automation stops befor
   assert.deepEqual(f.clicked,['practical']);
   assert.equal(f.selected,'combined');
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,false);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioSelected,'łączony');
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioAttempted,true);
   f.tick();
   f.wnd.__zlapFormPrep.scan();
