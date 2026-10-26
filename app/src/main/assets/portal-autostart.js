@@ -746,6 +746,18 @@
   function bookingUiDate(iso) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return null;
     var day=iso.slice(0,10), hour=iso.slice(11,16);
+    if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(iso)) {
+      // Match local MORD Kraków clock time even when API date carries offset.
+      try {
+        var parts=new Intl.DateTimeFormat('en-GB', {
+          timeZone:'Europe/Warsaw',year:'numeric',month:'2-digit',day:'2-digit',
+          hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+        }).formatToParts(new Date(iso));
+        function part(kind) {return parts.filter(function(p){return p.type===kind;})[0].value;}
+        day=part('year')+'-'+part('month')+'-'+part('day');
+        hour=part('hour')+':'+part('minute');
+      } catch (_) {return null;}
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || hour > '23:59') return null;
     return {
       day:day,
