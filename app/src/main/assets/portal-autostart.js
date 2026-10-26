@@ -221,7 +221,10 @@
     // link (including "Opłać egzamin") even on the homepage.
     // Never interpret such a menu link as an active payment screen.
     var relevant = heading ? norm(heading.textContent || heading.innerText) : '';
-    return /podsumowanie rezerwacji|metoda platnosci|oplac egzamin|potwierdz rezerwacje|zaplac|numer rezerwacji/.test(relevant);
+    // Strong payment/confirmation indicators remain blocking even without h1.
+    // "Opłać egzamin" alone can be a global menu item.
+    var strong = /podsumowanie rezerwacji|metoda platnosci|potwierdz rezerwacje|zaplac|numer rezerwacji/;
+    return strong.test(body) || /oplac egzamin/.test(relevant);
   }
   function scan() {
     if (!settings.enabled || stopped || !allowed() || !document.body) return;
