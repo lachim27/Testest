@@ -832,6 +832,27 @@
     });
     if (matches.length!==1) return null;
     var heading=matches[0];
+    // A heading with an already-visible card must not be clicked again,
+    // as that would collapse it rather than reveal the requested slot.
+    var all=Array.from(document.querySelectorAll('*'));
+    var at=all.indexOf(heading);
+    if (all.slice(at+1).some(function(el){
+      var label=bookingUiSafeText(el);
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(label)) return false;
+      return visible(el) && label.length>25 && label.length<450 &&
+        /egzamin praktyczny/.test(label);
+    })) {
+      var nextDate=all.slice(at+1).findIndex(function(el){
+        return /^\d{2}\/\d{2}\/\d{4}$/.test(bookingUiSafeText(el));
+      });
+      var currentBlock=all.slice(at+1,
+        nextDate<0 ? all.length : at+1+nextDate);
+      if (currentBlock.some(function(el) {
+        var txt=bookingUiSafeText(el);
+        return visible(el) && txt.length>25 && txt.length<450 &&
+          /egzamin praktyczny/.test(txt);
+      })) return null;
+    }
     var btn=heading.closest && heading.closest(
       'button, [role="button"], summary, [aria-expanded]');
     // A date bar may have a JavaScript click handler on a plain div.
