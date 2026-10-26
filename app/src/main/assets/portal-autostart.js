@@ -524,6 +524,35 @@
     }
     return click(candidates[0], 'profil PKK');
   }
+
+  // Second wizard screen observed in Android screenshots:
+  // "Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a"
+  // "Wybór rodzaju egzaminu" has four RADIO choices, not a dropdown.
+  // The portal defaults to "Wyświetl wszystkie typy egzaminu".
+  // Pick the single exact "Egzamin praktyczny" option, never theory,
+  // combined, or a similarly-named card on the results screen.
+  function choosePracticalExamRadio() {
+    var body = norm(document.body && document.body.innerText || '');
+    if (!/wybor rodzaju egzaminu/.test(body) ||
+        !/wyswietl wszystkie typy egzaminu/.test(body) ||
+        !/wybor terminu egzaminu dla/.test(body)) return false;
+    // Never toggle a selected radio after a successful choice.
+    if (changed['rodzaj: egzamin praktyczny']) return false;
+    var choices = radioChoices(function(txt) {
+      return txt === 'egzamin praktyczny';
+    });
+    if (choices.length !== 1) {
+      if (choices.length > 1)
+        report('Kilka nierozróżnialnych kontrolek „Egzamin praktyczny”. Nie wybieram automatycznie.');
+      return false;
+    }
+    if (checkedRadio(choices[0])) {
+      changed['rodzaj: egzamin praktyczny'] = true;
+      report('Egzamin praktyczny jest już zaznaczony.');
+      return false;
+    }
+    return click(choices[0], 'rodzaj: egzamin praktyczny');
+  }
   function chooseWordMode() {
     if (changed['wybór WORD']) return false;
     var body = norm(document.body && document.body.innerText || '');
@@ -675,6 +704,9 @@
          !/wybor osrodka egzaminacyjnego word/.test(body)) &&
         openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
 
+    // First, handle the radio cards on the real "Wybór rodzaju egzaminu"
+    // screen. The native/custom select fallbacks below are for other layouts.
+    if (choosePracticalExamRadio()) return;
     // Next step: choose practical exam, then search date list. Not a booking.
     if (selectNative('praktyczny', /(rodzaj|typ egzamin)/,
         /^(egzamin\s+)?(praktyka|praktyczny)$/)) return;
@@ -1061,7 +1093,14 @@
         categoryReadable:categoryStatus()!=='unknown',
         specificWord:!!changed['wybór WORD'],
         centerNowohucka:!!changed['ośrodek Kraków'],
-        nextStep:!!changed['przejście Profil i WORD']
+        nextStep:!!changed['przejście Profil i WORD'],
+        practicalRadio:!!changed['rodzaj: egzamin praktyczny'],
+        practicalRadioScreen:(function(){
+          var b=norm(document.body && document.body.innerText || '');
+          return /wybor rodzaju egzaminu/.test(b) &&
+            /wyswietl wszystkie typy egzaminu/.test(b) &&
+            /wybor terminu egzaminu dla/.test(b);
+        })()
       },
       wizard:elements.length>fields.other,
       controls:controls, fields:fields,
