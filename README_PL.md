@@ -192,3 +192,13 @@ Zrzut z rzeczywistego drugiego etapu formularza ujawnił cztery przyciski RADIO 
 Wersja 0.31 rozpoznaje wyłącznie ten etap: obecność nagłówków „Wybór terminu egzaminu dla” i „Wybór rodzaju egzaminu”, a także „Wyświetl wszystkie typy egzaminu”. Tylko gdy istnieje jeden jednoznaczny radio-option o dokładnej etykiecie **Egzamin praktyczny**, kliknie go (lub pozostawi już zaznaczony). Nie wybiera teoretycznego, łączonego ani opcji „wszystkie”. Nie ingeruje w listę konkretnych terminów ani okno potwierdzania. Zachowano działające przejście pierwszego formularza, godziny i daty autorezerwacji oraz limity HTTP.
 
 Raport automatu pokazuje teraz: „Ekran wyboru rodzaju egzaminu” i „zaznaczanie praktycznego” (próba kliknięcia lub rozpoznanie już zaznaczonego). **To nie jest potwierdzenie rezerwacji.** Testy skryptu 51/51 przeszły z symulacją czterech kart oraz przypadków negatywnych. Realne zachowanie portalu wymaga testu w aplikacji po zalogowaniu.
+
+## 0.32 — krytyczna poprawka błędnego wyboru egzaminu łączonego
+
+Raport z wersji 0.31 ujawnił, że automat wybrał egzamin łączony, mimo że miał zaznaczyć praktyczny. Diagnostyka wskazywała „Ekran wyboru rodzaju egzaminu: true”, „zaznaczanie praktycznego: false”, a na ekranie były cztery wejścia radio, bez innych pól rodzaju egzaminu.
+
+Poprzedni algorytm klikał tekstową etykietę i uznawał próbę za sukces bez sprawdzenia stanu pola. Dodatkowo na ekranie z radiobuttonami pozwalał później na ogólną obsługę rozwijanego pola rodzaju egzaminu, co mogło prowadzić do błędnego kliknięcia.
+
+W 0.32 klikana jest **konkretna kontrolka radio** jednoznacznie skojarzona z etykietą **Egzamin praktyczny**, a jej rzeczywisty stan `checked`/ARIA jest kontrolowany przed wykonaniem kolejnego kroku. Obsługa niejednoznacznych kontrolek oraz zapasowe ścieżki select/combobox są wyłączone na tym ekranie. Jeśli portal nie zaznaczy praktycznego albo wskaże inny typ, automat **zatrzymuje się bez ponownego klikania i bez wyszukiwania**. Nie dotyka rezerwacji ani płatności; wcześniejsze ustawienia dat/godzin oraz zachowana nawigacja i limity zapytań pozostały bez zmian.
+
+Nowy raport pokazuje: „praktyczny POTWIERDZONY”, „Wybór radio: praktyczny/łączony/teoretyczny/wszystkie/nieodczytany” oraz „próba zaznaczenia”. Nie udostępnia PKK. **54/54 testy symulowanego JavaScript przeszły**, w tym scenariusz, w którym portal nieprawidłowo zaznacza „łączony”, a automat musi się zatrzymać. Potrzebna jest dalsza próba na prawdziwym, zalogowanym portalu.
