@@ -35,6 +35,17 @@ class SlotMonitor(
     private val onUpdate: () -> Unit
 ) {
     private val prefs = activity.getSharedPreferences("slot_monitor_v1", Context.MODE_PRIVATE)
+    init {
+        // Versions up to 0.21 saved the experimental form-helper toggle as false.
+        // Upgrade it ON once for users installing the dedicated auto-start fix.
+        // Future explicit opt-outs remain respected.
+        if (!prefs.getBoolean("portal_form_preparation_migrated_v22", false)) {
+            prefs.edit()
+                .putBoolean("portal_form_preparation_migrated_v22", true)
+                .putBoolean("portal_form_preparation", true)
+                .apply()
+        }
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val rateGuard = RateGuard(activity)
     val intervalSeconds: Int get() = prefs.getInt("interval_seconds", 30)
@@ -102,7 +113,9 @@ class SlotMonitor(
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
     val portalFormPreparationEnabled: Boolean
         get() = prefs.getBoolean("portal_form_preparation", true)
-    var portalFormPreparationStatus: String = "Wyłączone"
+    var portalFormPreparationStatus: String =
+        if (portalFormPreparationEnabled) "Oczekiwanie na zalogowaną stronę Portalu"
+        else "Wyłączone"
         private set
 
     /**
@@ -124,6 +137,94 @@ class SlotMonitor(
                 "window.__zlapFormPrep.configure({enabled:" + on + "}));", null
         )
     }
+    fun portalFormPreparationReport(onResult: (String) -> Unit) {
+        if (!supported) {
+            onResult("Skrypt portalu niedostępny: sprawdź Android System WebView.")
+            return
+        }
+        if (!isPortal(web.url)) {
+            onResult("Portal Info-Kierowca nie jest obecnie otwarty w aplikacji.")
+            return
+        }
+        web.evaluateJavascript(
+            """(function() {
+                try { return JSON.stringify(window.__zlapFormPrep &&
+                    window.__zlapFormPrep.diagnose ?
+                    window.__zlapFormPrep.diagnose() : {script:false}); }
+                catch (e) { return JSON.stringify({script:false,error:'js_exception'}); }
+            })();"""
+        ) { result ->
+            try {
+                // evaluateJavascript returns a JSON-escaped string. Parse twice.
+                val payload = JSONObject("{\"v\":" + result + "}").optString("v")
+                val data = JSONObject(payload)
+                val fields = data.optJSONObject("fields") ?: JSONObject()
+                val controls = data.optJSONObject("controls") ?: JSONObject()
+                val report = "Automat formularza ZłapEgzamin 0.22\n" +
+                    "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
+                    "Automat w Opcjach: " +
+                        (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
+                    "Skrypt na stronie: " +
+                        (if (data.optBoolean("script")) "działa" else "BRAK") + "\n" +
+                    "Skrypt aktywny: " + data.optBoolean("enabled") + "\n" +
+                    "Ekran: " + data.optString("screen").take(40) + "\n" +
+                    "Zatrzymany: " + data.optBoolean("stopped") + "\n" +
+                    "Wykonane kroki: " + data.optInt("actions") + "\n" +
+                    "Kontrolki: start=" + controls.optInt("start") +
+                        ", PKK=" + controls.optInt("pkk") +
+                        ", dalej=" + controls.optInt("next") +
+                        ", szukaj=" + controls.optInt("search") + "\n" +
+                    "Pola: profil=" + fields.optInt("profile") +
+                        ", ośrodek=" + fields.optInt("center") +
+                        ", kategoria=" + fields.optInt("category") +
+                        ", rodzaj=" + fields.optInt("type") +
+                        ", data=" + fields.optInt("date") +
+                        ", inne=" + fields.optInt("other") + "\n" +
+                    "Etap: " + data.optString("last").take(180) + "\n" +
+                    "Status odczytu: " + diagnostics.take(160)
+                onResult(report)
+            } catch (_: Exception) {
+                onResult("Nie udało się odczytać diagnostyki formularza. " +
+                    "W aplikacji Portal może być otwarta inna strona.")
+            }
+        }
+    }
+
+    fun retryPortalFormPreparation(onResult: (String) -> Unit) {
+        if (destroyed || !supported || !isPortal(web.url)) {
+            onResult("Najpierw otwórz Portal Info-Kierowca w aplikacji.")
+            return
+        }
+        if (!portalFormPreparationEnabled) {
+            setPortalFormPreparationEnabled(true)
+        }
+        // In case WebView missed document-start injection after external login,
+        // reinstall only our own local helper on the already trusted origin.
+        web.evaluateJavascript("Boolean(window.__zlapFormPrep);") { exists ->
+            fun retry() {
+                web.evaluateJavascript(
+                    "Boolean(window.__zlapFormPrep && " +
+                    "window.__zlapFormPrep.configure({enabled:true}) && " +
+                    "window.__zlapFormPrep.retry());"
+                ) { response ->
+                    onResult(if (response == "true")
+                        "Ponownie uruchomiono wybór formularza w Portalu."
+                    else "Skrypt przygotowania nie wystartował. Skopiuj diagnostykę.")
+                }
+            }
+            if (exists == "true") retry()
+            else {
+                try {
+                    val source = activity.assets.open("portal-autostart.js")
+                        .bufferedReader().use { it.readText() }
+                    web.evaluateJavascript(source) { retry() }
+                } catch (_: Exception) {
+                    onResult("Nie udało się załadować skryptu przygotowania.")
+                }
+            }
+        }
+    }
+
     val backgroundSessionMaintenanceEnabled: Boolean
         get() = prefs.getBoolean("background_session_maintenance", true)
     fun setBackgroundSessionMaintenanceEnabled(value: Boolean) {
