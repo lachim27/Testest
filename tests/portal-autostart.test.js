@@ -366,3 +366,121 @@ test('payment confirmation text keeps automatic opening disabled',()=>{
   f.window.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(f.clicked,[]);
 });
+
+
+// Screens from the real portal: after login the user sees "Moje wnioski i
+// rezerwacje"; the exam service is hidden behind a hamburger menu.
+test('opens the hamburger on the logged-in requests homepage',()=>{
+  const clicks=[];
+  const menu={
+    isConnected:true,disabled:false,nodeType:1,parentElement:null,
+    innerText:'',textContent:'',
+    getAttribute(k){return k==='aria-label'?'Menu':null;},
+    getClientRects(){return [1];},
+    closest(){return null;}, querySelector(){return null;},
+    click(){clicks.push('hamburger');}
+  };
+  const doc={
+    body:{innerText:'PORTAL E-USŁUG. Moje wnioski i rezerwacje'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('button, [role="button"], [aria-label]'))return [menu];
+      if(q.startsWith('button, a, [role="button"]'))return [menu];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicks,['hamburger']);
+  wnd.__zlapFormPrep.scan();
+  assert.deepEqual(clicks,['hamburger']); // not immediately toggled shut
+  assert.equal(wnd.__zlapFormPrep.diagnose().menuOpened,true);
+});
+
+test('opens a plain service tile containing exact visible exam-menu text',()=>{
+  const clicked=[];
+  const leaf={
+    isConnected:true,disabled:false,nodeType:1,parentElement:null,
+    innerText:'Zarezerwuj termin egzaminu',
+    textContent:'Zarezerwuj termin egzaminu',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    contains(other){return this===other;},
+    closest(){return null;},
+    click(){clicked.push('service');}
+  };
+  const doc={
+    body:{innerText:'USŁUGI: Lista moich spraw, Zarezerwuj termin egzaminu'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('nav span, nav div, nav li'))return [leaf];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,['service']);
+});
+
+test('recognizes already selected PKK candidate profile radio on first step',()=>{
+  const inner={checked:true};
+  const option={
+    nodeType:1,isConnected:true,disabled:false,parentElement:null,
+    innerText:'PKK - Profil kandydata na kierowcę (PKK)',
+    textContent:'PKK - Profil kandydata na kierowcę (PKK)',
+    getAttribute(){return null;},getClientRects(){return [1];},
+    contains(other){return other===this;},
+    querySelector(){return inner;},
+    click(){throw Error('already selected PKK must not be clicked');}
+  };
+  const doc={
+    body:{innerText:'Wybór rodzaju profilu. PKK - Profil kandydata na kierowcę (PKK)'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q==='input[type="radio"], [role="radio"], label')return [option];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.equal(wnd.__zlapFormPrep.diagnose().actions,0);
+});
+
+test('opens profile number custom combobox from floating field label',()=>{
+  const clicked=[];
+  const parent={innerText:'Numer profilu*\nWybierz z listy',parentElement:null};
+  const control={
+    nodeType:1,isConnected:true,disabled:false,parentElement:parent,
+    innerText:'',textContent:'',id:'',
+    getAttribute(k){return k==='aria-label'?'Wybierz z listy':null;},
+    closest(q){return q.indexOf('.MuiFormControl-root')>=0?parent:null;},
+    getClientRects(){return [1];},contains(other){return other===this;},
+    click(){clicked.push('profile dropdown');}
+  };
+  const doc={
+    body:{innerText:'Wybór rodzaju profilu. Numer profilu, Kategoria'},
+    documentElement:null,addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.startsWith('[role="combobox"], mat-select'))return [control];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicked,['profile dropdown']);
+});
