@@ -998,8 +998,9 @@ test('booking UI expands exact December 17 heading before selecting 06:00',()=>{
 // not a select or combobox. Default is "Wyświetl wszystkie typy egzaminu".
 function practicalScreen(opts={}) {
   const clicked=[],events=[];
-  let selected=!!opts.practicalSelected;
-  const bodyText = opts.bodyText || (
+  let selected=opts.practicalSelected?'practical':'all';
+  let clock=10000;
+  const bodyText=opts.bodyText||(
     'Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a. '+
     'Wybór rodzaju egzaminu. Egzamin teoretyczny. Egzamin praktyczny. '+
     'Egzamin łączony (Teoria + Praktyka). Wyświetl wszystkie typy egzaminu. '+
@@ -1014,50 +1015,65 @@ function practicalScreen(opts={}) {
       closest(){return null;},
       contains(other){return other===item;},
       querySelector(q) {
-        return q.includes(':checked') && (
-          (id==='practical' && selected) || (id==='all' && !selected))?{}:null;
+        if(q.includes(':checked')) return selected===id?item.radio:null;
+        if(q.includes('label')) return item;
+        if(q.includes('input[type="radio"]')) return item.radio;
+        return null;
       },
+      click(){item.radio.click();}
+    };
+    const radio={
+      tagName:'INPUT',type:'radio',nodeType:1,disabled:false,isConnected:true,
+      parentElement:item,
+      get checked(){return selected===id;},
+      getAttribute(k){
+        if(k==='aria-label')return txt;
+        if(k==='aria-checked')return selected===id?'true':'false';
+        return null;
+      },
+      getClientRects(){return [1];},
+      closest(){return item;},
       click(){
         clicked.push(id);
-        if(id==='practical')selected=true;
+        selected=opts.misroute && id==='practical'?'combined':id;
       }
     };
+    item.radio=radio;
     return item;
   };
-  const practical=option('Egzamin praktyczny','practical');
-  const list=[
+  const items=[
     option('Egzamin teoretyczny','theory'),
-    practical,
+    option('Egzamin praktyczny','practical'),
     option('Egzamin łączony (Teoria + Praktyka)','combined'),
     option('Wyświetl wszystkie typy egzaminu','all')
   ];
-  if(opts.duplicated)list.push(option('Egzamin praktyczny','practical-duplicate'));
+  if(opts.duplicated)items.push(option('Egzamin praktyczny','practical-duplicate'));
   const doc={
     body:{innerText:bodyText},documentElement:null,addEventListener(){},
     querySelector(){return null;},
     querySelectorAll(q) {
-      if(q.startsWith('label, [role="radio"]')) return list;
+      if(q==='input[type="radio"], [role="radio"]')return items.map(i=>i.radio);
+      if(q.startsWith('label, [role="radio"]'))return items;
+      if(q==='input[type="radio"], input[type="date"]')return items.map(i=>i.radio);
       return [];
     }
   };
-  const wnd={
-    setInterval(){},MutationObserver:null,
-    ZlapBridge:{postMessage(raw){events.push(JSON.parse(raw));}}
-  };
-  const fakeClock=class extends Date{static now(){return 10000;}};
+  const wnd={setInterval(){},MutationObserver:null,
+    ZlapBridge:{postMessage(raw){events.push(JSON.parse(raw));}}};
+  class FakeDate extends Date{static now(){return clock;}}
   new Function('window','document','location','getComputedStyle','CSS',
     'Event','MutationObserver','Date',source)(
     wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
-    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{},fakeClock
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class{},class{},FakeDate
   );
-  return {wnd,clicked,events,get selected(){return selected;}};
+  return {wnd,clicked,events,get selected(){return selected;},
+    tick(){clock+=2000;}};
 }
-
 test('second wizard step selects only practical B exam radio instead of all types',()=>{
   const f=practicalScreen();
   f.wnd.__zlapFormPrep.configure({enabled:true});
   assert.deepEqual(f.clicked,['practical']);
-  assert.equal(f.selected,true);
+  assert.equal(f.selected,'practical');
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,true);
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioScreen,true);
   f.wnd.__zlapFormPrep.scan();
@@ -1087,4 +1103,38 @@ test('practical radio is not clicked on results, booking summary or unrelated pa
     f.wnd.__zlapFormPrep.configure({enabled:true});
     assert.deepEqual(f.clicked,[]);
   }
+});
+
+
+test('if portal selects combined despite practical click, automation stops before search',()=>{
+  const f=practicalScreen({misroute:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.selected,'combined');
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,false);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioAttempted,true);
+  f.tick();
+  f.wnd.__zlapFormPrep.scan();
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,true);
+  assert.match(f.wnd.__zlapFormPrep.diagnose().last,/nie jest zaznaczony egzamin praktyczny/);
+  assert.deepEqual(f.clicked,['practical']);
+});
+
+test('when four radio options are visible but practical has no readable label, never click others',()=>{
+  const f=practicalScreen({bodyText:'Wybór terminu egzaminu dla: MORD Kraków. '+
+    'Wybór rodzaju egzaminu. Wyświetl wszystkie typy egzaminu.'});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  // With actual radio labels present in the DOM, the exact input still succeeds
+  // even if the entire page's text has not settled yet.
+  assert.deepEqual(f.clicked,['practical']);
+});
+
+test('no search when four radio inputs exist but none is safely label-associated',()=>{
+  const f=practicalScreen({duplicated:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  f.tick();
+  f.wnd.__zlapFormPrep.scan();
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,false);
+  assert.deepEqual(f.clicked,[]);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadio,false);
 });
