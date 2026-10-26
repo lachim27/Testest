@@ -86,47 +86,117 @@
   function menuOpened() {
     return changed['menu usług'] || changed['otwarcie zakładki Zarezerwuj termin egzaminu'];
   }
-  function openServicesMenu(body) {
-    if (menuOpened() || !/moje wnioski i rezerwacje|moje sprawy|witaj|portal e-uslug/.test(body)) return false;
-    // The actual logged-in portal starts on "Moje wnioski i rezerwacje".
-    // The exam service is behind the ☰ hamburger menu shown in the screenshot.
-    // Do not click generic navigation or profile buttons.
-    var candidates = [];
+
+  function isHomePage(body) {
+    // Exact words from the logged-in Info-Kierowca homepage.
+    // A lone "PORTAL E-USŁUG" is a persistent header and is NOT enough.
+    return /moje wnioski i rezerwacje|lista moich spraw|rezerwacje zostaly anulowane|rezerwacja anulowana przez word/.test(body);
+  }
+  function inHamburgerArea(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    var box = el.getBoundingClientRect();
+    var width = (window.innerWidth || document.documentElement &&
+      document.documentElement.clientWidth || 400);
+    return box.width > 7 && box.width <= 105 &&
+      box.height > 7 && box.height <= 105 &&
+      box.left >= -8 && box.left < Math.min(110, width*0.28) &&
+      box.right <= Math.min(135, width*0.36) &&
+      box.top >= -12 && box.top < 100 && box.bottom < 145;
+  }
+  function hamburgerGlyph(el) {
+    if (!el) return false;
+    var words = norm((el.getAttribute &&
+      ((el.getAttribute('aria-label') || '') + ' ' +
+       (el.getAttribute('title') || '') + ' ' +
+       (el.getAttribute('data-testid') || ''))) || '');
+    var cls = norm(typeof el.className === 'string' ? el.className : '');
+    if (/^(menu|otworz menu|pokaz menu|menu glowne|menu portalu|menu nawigacji|otworz nawigacje)/.test(words) ||
+        /hamburger|navbar-toggler|menu-toggle|menu-button|menu-icon|sidenav-toggle|nav-toggle/.test(cls))
+      return true;
+    var icon = el.querySelector && el.querySelector('mat-icon, .material-icons');
+    if (icon && norm(icon.textContent) === 'menu') return true;
+    var svg = (el.tagName && norm(el.tagName) === 'svg') ? el :
+      el.querySelector && el.querySelector('svg');
+    if (!svg) return false;
+    var lines = svg.querySelectorAll ? Array.from(svg.querySelectorAll('line')) : [];
+    if (lines.filter(function(l){return l.getAttribute('y1') === l.getAttribute('y2');}).length >= 3)
+      return true;
+    var path = svg.querySelectorAll ? Array.from(svg.querySelectorAll('path')) : [];
+    var d = path.map(function(p){return (p.getAttribute('d') || '').replace(/\s/g,'').toLowerCase();}).join('');
+    // Three horizontal Material/Lucide/SVG path segments.
+    if ((d.match(/[mh][0-9.,-]+h[0-9.,-]+/g) || []).length >= 3 ||
+        (d.includes('m3,18h18') && d.includes('m3,12h18') && d.includes('m3,6h18')))
+      return true;
+    return false;
+  }
+  function menuButtonTarget(el) {
+    if (!el) return null;
+    var target = el.closest && el.closest(
+      'button, [role="button"], [aria-label*="menu"], [title*="menu"],' +
+      ' .hamburger, .navbar-toggler, .menu-toggle, .menu-button,' +
+      ' .menu-icon, .sidenav-toggle');
+    if (target && inHamburgerArea(target)) return target;
+    // Web frameworks often bind click to a wrapping div with no role.
+    var node = el;
+    for (var i=0; node && i<4; node=node.parentElement, i++) {
+      if (!inHamburgerArea(node)) continue;
+      var pointer = false;
+      try { pointer = getComputedStyle(node).cursor === 'pointer'; } catch(_){}
+      if (hamburgerGlyph(node) && (pointer || node.onclick ||
+          (node.tagName && /^(button|a)$/i.test(node.tagName)) ||
+          (node.querySelector && !!node.querySelector('svg, mat-icon'))))
+        return node;
+    }
+    return null;
+  }
+  function hamburgerCandidates() {
+    var found = [];
+    function add(el) {
+      if (!el || !visible(el) || !inHamburgerArea(el) ||
+          found.indexOf(el)>=0) return;
+      found.push(el);
+    }
     try {
-      candidates = Array.from(document.querySelectorAll(
-        'button, [role="button"], [aria-label], [title], mat-icon,' +
-        ' [class*="hamburger"], [class*="menu-toggle"], [class*="menu-icon"]'))
-        .filter(visible).map(function (el) {
-          return el.closest && el.closest('button, [role="button"], [tabindex]') || el;
+      Array.from(document.querySelectorAll(
+        'button, [role="button"], [aria-label], [title], mat-icon, svg,' +
+        ' [class*="hamburger"], [class*="menu"], [class*="navbar-toggler"],' +
+        ' [class*="sidenav-toggle"], [class*="nav-toggle"]'))
+        .filter(visible).forEach(function (el) {
+          if (!hamburgerGlyph(el)) return;
+          add(menuButtonTarget(el) || el);
         });
-    } catch (_) { return false; }
-    candidates = candidates.filter(function (el, i, all) {
-      if (all.indexOf(el) !== i || !visible(el)) return false;
-      var title = norm((el.getAttribute &&
-        (el.getAttribute('aria-label') || el.getAttribute('title') ||
-         el.getAttribute('data-testid'))) || '');
-      var value = name(el);
-      if (/^(menu|menu glowne|menu portalu|otworz menu|pokaz menu|rozwin menu|otworz nawigacje)$/.test(title) ||
-          /^(menu|☰|≡)$/.test(value)) return true;
-      // Icon-only buttons often contain a Material menu glyph or three SVG bars.
-      var icon = el.querySelector && el.querySelector('mat-icon, .material-icons');
-      if (icon && norm(icon.textContent) === 'menu') return true;
-      var svg = el.querySelector && el.querySelector('svg');
-      if (!svg) return false;
-      var lines = svg.querySelectorAll ? svg.querySelectorAll('line') : [];
-      var paths = svg.querySelectorAll ? svg.querySelectorAll('path') : [];
-      var horizontal = Array.from(lines).filter(function (v) {
-        return v.getAttribute('y1') === v.getAttribute('y2');
-      }).length;
-      var d = Array.from(paths).map(function(v) {
-        return norm(v.getAttribute('d') || '').replace(/\s/g,'');
-      }).join(' ');
-      var hamburger = horizontal >= 3 ||
-        /m[234]6h(16|18)|m[234]18h(16|18)|m[34]4h(16|18)/.test(d);
-      return hamburger && !!(el.closest && el.closest(
-        'header, nav, [role="banner"], [class*="header"], [class*="toolbar"]'));
+      // Screenshot-based probe, constrained to the menu area of the authenticated
+      // homepage. Never click an arbitrary point: require a clickable target
+      // AND a matching hamburger glyph or menu identity.
+      if (document.elementFromPoint) {
+        var width = window.innerWidth || 400;
+        [20,32,44,56].forEach(function(y) {
+          [Math.min(26,width*.07),Math.min(40,width*.10),
+           Math.min(55,width*.14)].forEach(function(x) {
+            var el = document.elementFromPoint(x,y);
+            var target = menuButtonTarget(el);
+            if (target && (hamburgerGlyph(target) || hamburgerGlyph(el)))
+              add(target);
+          });
+        });
+      }
+    } catch (_) {}
+    return found.filter(function(el) {
+      return !found.some(function(other) {
+        return other !== el && el.contains && el.contains(other);
+      });
     });
-    return candidates.length === 1 && click(candidates[0], 'menu usług');
+  }
+  function openServicesMenu(body) {
+    if (menuOpened() || !isHomePage(body)) return false;
+    var candidates = hamburgerCandidates();
+    if (candidates.length !== 1) {
+      report(candidates.length ?
+        'Wykryto kilka ikon menu. Nie klikam niejednoznacznej kontrolki.' :
+        'Widzę stronę główną, ale nie rozpoznaję ikony menu ☰. Skopiuj raport automatu.');
+      return false;
+    }
+    return click(candidates[0], 'menu usług');
   }
   function openExamMenuLeaf() {
     // Angular menus sometimes attach handlers to an <li>, <div> or a
@@ -514,7 +584,10 @@
         });
     } catch (_) {}
     var body = norm((document.body && document.body.innerText || '').slice(0,20000));
+    var home = isHomePage(body);
+    var hamburgerCount = home ? hamburgerCandidates().length : 0;
     return {
+      onHomePage:home, hamburgerCount:hamburgerCount,
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
