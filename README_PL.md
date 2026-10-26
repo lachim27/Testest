@@ -130,3 +130,11 @@ W raporcie z rzeczywistego telefonu skrypt był uruchomiony, ale wykrył **0 kli
 Raport diagnostyczny 0.24 rozszerzono o **typy nierozpoznanych kontrolek**, liczbę ramek `iframe`, widoczność tekstu zakładki w nawigacji oraz liczbę hostów Shadow DOM. Raport nie udostępnia wartości pól, PKK, hasła, ciasteczek ani tekstu strony.
 
 Jeśli menu nadal nie zostanie rozpoznane, wklej nowy raport po zalogowaniu w Portalu, a opcjonalnie prześlij zrzut ekranu zakładki z zasłoniętymi danymi osobowymi. Bez wyglądu rzeczywistej zalogowanej strony nie można zagwarantować pełnego przejścia formularza, nawet przy pomyślnych testach automatu na atrapach DOM. 
+
+## 0.25 — przejście według prawdziwych ekranów (26.10.2026)
+
+Po zalogowaniu w telefonie widoczna jest **strona „Moje wnioski i rezerwacje”**, a nie od razu lista usług. Na górze oficjalnego portalu jest przycisk **menu ☰**. Po jego otwarciu pojawia się kafelek **„Zarezerwuj termin egzaminu”**. Pierwszy krok formularza to **„Profil i WORD”**, w którym pokazany jest wariant **PKK – Profil kandydata na kierowcę**, następnie pole rozwijane **„Numer profilu”** oraz **„Kategoria”**. Dopiero po ukończeniu pierwszego kroku należy wybrać egzamin praktyczny i otworzyć listę dat.
+
+W 0.25 automat próbuje najpierw bezpiecznie rozpoznać przycisk ☰ i otworzyć menu usług, następnie kliknąć jednoznaczny kafelek „Zarezerwuj termin egzaminu”. Rozpoznaje również zaznaczoną już opcję PKK oraz rozwijane listy (Angular Material / MUI / PrimeNG i natywne). Jeśli na liście profili jest więcej niż jeden kandydat lub portal zmieni widok, **nie zgaduje numeru**. Nie klika dostępnej godziny, nie składa rezerwacji i nie płaci.
+
+Zaktualizowano raport diagnostyczny o informację, czy automat otworzył menu usług. Uruchomiono 25 testów symulowanego DOM — **to nie zastępuje próby w zalogowanym Portalu**. Jeśli helper nadal stoi w miejscu, należy przesłać raport bez PKK lub zrzut interfejsu z ukrytymi danymi osobowymi. Screenshots, PKK i ciasteczka sesji nie są przechowywane w publicznym repozytorium.
