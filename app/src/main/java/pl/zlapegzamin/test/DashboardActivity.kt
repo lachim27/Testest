@@ -810,6 +810,29 @@ class DashboardActivity : Activity() {
         })
         put(page, dates, 19)
 
+        val prep = card()
+        put(prep, text("AUTOMATYCZNE PRZYGOTOWANIE FORMULARZA", 12f, blue, true), 12)
+        put(prep, text(
+            "Po Twoim zalogowaniu aplikacja spróbuje wybrać PKK, MORD Kraków, " +
+                "kategorię B i praktykę, a następnie otworzyć listę terminów. " +
+                "Nie loguje się za Ciebie, nie zatwierdza miejsca ani płatności. " +
+                "Jeśli portal pokaże kilka profili PKK lub zmieni układ, " +
+                "poprosi Cię o ręczny wybór. Bez dodatkowych zapytań o egzaminy.",
+            13f, muted), 12)
+        put(prep, action(
+            if (monitor.portalFormPreparationEnabled)
+                "Przygotowanie formularza: WŁĄCZONE"
+            else "Przygotowanie formularza: WYŁĄCZONE",
+            monitor.portalFormPreparationEnabled
+        ) {
+            monitor.setPortalFormPreparationEnabled(!monitor.portalFormPreparationEnabled)
+            refreshSettingsAtSamePosition()
+        }, 10)
+        put(prep, text("Status: " + monitor.portalFormPreparationStatus,
+            13f, muted), 10)
+        put(prep, action("Pokaż formularz w Portalu", false) { show("portal") })
+        put(page, prep, 19)
+
         val booking = card()
         put(booking, text("AUTOREZERWACJA – ZAJĘCIE MIEJSCA", 12f, blue, true), 12)
         put(booking, text("ZłapEgzamin sam utworzy tymczasową rezerwację dla " +
