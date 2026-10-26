@@ -181,11 +181,51 @@
         });
       }
     } catch (_) {}
-    return found.filter(function(el) {
+    var out = found.filter(function(el) {
       return !found.some(function(other) {
         return other !== el && el.contains && el.contains(other);
       });
     });
+    if (out.length) return out;
+    // Screenshot-verified fallback: on "Moje wnioski i rezerwacje" the
+    // hamburger is the one compact control in the top-left 90 px of the
+    // WebView. Some portals render the three bars with CSS pseudo-elements,
+    // with no SVG, aria-label, title, button, or accessible text.
+    // Only try bounded elementFromPoint on that EXACT home screen.
+    var body = norm((document.body && document.body.innerText || '').slice(0,15000));
+    if (!isHomePage(body) || !document.elementFromPoint) return out;
+    var width = window.innerWidth || 400, hits = [];
+    [26,35,44].forEach(function(y) {
+      [Math.min(30,width*.08),Math.min(39,width*.10)].forEach(function(x) {
+        try {
+          var hit = document.elementFromPoint(x,y);
+          var candidate = null;
+          for (var n=hit, depth=0; n && depth<5; n=n.parentElement,depth++) {
+            if (!inHamburgerArea(n)) continue;
+            var rect=n.getBoundingClientRect();
+            if (rect.left>x || rect.right<x || rect.top>y || rect.bottom<y)
+              continue;
+            var isIcon = /^(svg|mat-icon|i)$/i.test(n.tagName || '');
+            var pointer = false;
+            try { pointer = getComputedStyle(n).cursor === 'pointer'; } catch (_) {}
+            if ((rect.width >= 34 && rect.height >= 32) &&
+                (pointer || n.onclick || /^(button|a)$/i.test(n.tagName || ''))) {
+              candidate = n; break;
+            }
+            if (isIcon && rect.width >= 16 && rect.height >= 12)
+              candidate = n;
+          }
+          if (candidate && hits.indexOf(candidate)<0) hits.push(candidate);
+        } catch (_) {}
+      });
+    });
+    hits = hits.filter(function(el) {
+      return !hits.some(function(other) {
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    // Require one unambiguous compact interactive target in the corner.
+    return hits.length===1 ? hits : [];
   }
   function openServicesMenu(body) {
     if (menuOpened() || !isHomePage(body)) return false;
