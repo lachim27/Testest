@@ -63,6 +63,11 @@
     var matches = buttons().filter(function (el) { return test(name(el), el); });
     return matches.length === 1 && click(matches[0], reason);
   }
+  // This is the exact menu service leading TO the exam search form.
+  // It is not a reservation confirmation or an available exam slot.
+  function examMenuAction(label) {
+    return /^(zarezerwuj egzamin( panstwowy)?|zarezerwuj termin( egzaminu( panstwowego)?)?|rezerwuj termin( egzaminu)?|rezerwacja terminu egzaminu)$/.test(label);
+  }
   function fieldLabel(el) {
     var labels = [el.getAttribute('aria-label'), el.getAttribute('placeholder'),
       el.getAttribute('name'), el.getAttribute('id')];
@@ -257,8 +262,7 @@
     if (fillDateFrom()) return;
 
     // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
-    if (changed['profil PKK'] &&
-        openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/)) return;
+    if (openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/)) return;
     if (openCombobox('kategoria', /kategoria/)) return;
     if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
     if (openCombobox('praktyczny', /(rodzaj|typ egzamin)/)) return;
@@ -268,13 +272,13 @@
     var hasWizard = selectors.some(function (el) {
       return /profil|pkk|osrodek|kategoria|rodzaj egzamin/.test(fieldLabel(el));
     }) || Array.from(document.querySelectorAll('input[type="radio"], input[type="date"]'))
-      .filter(visible).length > 0;
+      .filter(visible).some(function (el) {
+        return /profil|pkk|osrodek|kategoria|rodzaj egzamin|data egzaminu/.test(fieldLabel(el));
+      });
     // The portal's navigation may mention PKK even on its homepage. The presence
     // of a label alone is not proof the reservation wizard is already open.
-    if (!hasWizard && uniqueClick(function (s) {
-      return /^(zarezerwuj|rezerwuj) termin( egzaminu( panstwowego)?)?$/.test(s) ||
-        s === 'rezerwacja terminu egzaminu';
-    }, 'otwarcie formularza')) return;
+    if (!hasWizard && uniqueClick(examMenuAction,
+      'otwarcie zakładki Zarezerwuj egzamin')) return;
 
     // Search action is only used once criteria are visible, never on a list of slots.
     if (!awaitingResults && /rodzaj egzaminu|egzamin praktyczny|praktyka/.test(body) &&
@@ -301,7 +305,7 @@
     report('Brak kolejnego bezpiecznego kroku. ' +
       (d.bookingAction ? 'Widzę przycisk rezerwacji, ale nie jest jednoznaczny. ' :
        d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
-       'Nie widzę jednoznacznego przycisku „Zarezerwuj termin”. ') +
+       'Nie widzę jednoznacznego przycisku „Zarezerwuj egzamin”. ') +
       'Opcje → Diagnostyka → Kopiuj raport automatu.');
   }
   function diagnose() {
@@ -309,7 +313,7 @@
     try { a = buttons(); } catch (_) {}
     var names = a.map(name);
     var kinds = [
-      ['start', /^(zarezerwuj|rezerwuj) termin|^rezerwacja terminu egzaminu/],
+      ['start', /^(zarezerwuj egzamin|zarezerwuj termin|rezerwuj termin|rezerwacja terminu egzaminu)/],
       ['pkk', /^(profil )?pkk$/],
       ['next', /^(dalej|przejdz dalej)$/],
       ['search', /^(pokaz|wyszukaj|sprawdz|szukaj) termin/],
