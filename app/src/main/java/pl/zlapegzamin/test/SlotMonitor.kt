@@ -160,7 +160,8 @@ class SlotMonitor(
                 val data = JSONObject(payload)
                 val fields = data.optJSONObject("fields") ?: JSONObject()
                 val controls = data.optJSONObject("controls") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.22\n" +
+                val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
+                val report = "Automat formularza ZłapEgzamin 0.24\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -180,6 +181,15 @@ class SlotMonitor(
                         ", rodzaj=" + fields.optInt("type") +
                         ", data=" + fields.optInt("date") +
                         ", inne=" + fields.optInt("other") + "\n" +
+                    "Typy nierozpoznanych: select=" + otherTags.optInt("select") +
+                        ", combobox=" + otherTags.optInt("combobox") +
+                        ", radio=" + otherTags.optInt("radio") +
+                        ", data=" + otherTags.optInt("date") +
+                        ", inne=" + otherTags.optInt("other") + "\n" +
+                    "Ramki strony: " + data.optInt("embeddedFrames") +
+                        ", Shadow DOM: " + data.optInt("shadowHosts") + "\n" +
+                    "Tekst zakładki w menu: " +
+                        (if (data.optBoolean("menuTextVisible")) "widoczny" else "nie wykryto") + "\n" +
                     "Etap: " + data.optString("last").take(180) + "\n" +
                     "Status odczytu: " + diagnostics.take(160)
                 onResult(report)
