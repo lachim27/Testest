@@ -33,7 +33,8 @@
     } catch (_) {}
   }
   function visible(el) {
-    if (!el || !el.isConnected || el.disabled) return false;
+    if (!el || !el.isConnected || el.disabled ||
+        (el.getAttribute && el.getAttribute('aria-disabled') === 'true')) return false;
     for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
       var style = getComputedStyle(n);
       if (style.display === 'none' || style.visibility === 'hidden') return false;
@@ -80,6 +81,52 @@
       label === 'zarezerwuj termin' ||
       label === 'rezerwacja terminu egzaminu';
   }
+
+  function menuOpened() {
+    return changed['menu usług'] || changed['otwarcie zakładki Zarezerwuj termin egzaminu'];
+  }
+  function openServicesMenu(body) {
+    if (menuOpened() || !/moje wnioski i rezerwacje|moje sprawy|witaj|portal e-uslug/.test(body)) return false;
+    // The actual logged-in portal starts on "Moje wnioski i rezerwacje".
+    // The exam service is behind the ☰ hamburger menu shown in the screenshot.
+    // Do not click generic navigation or profile buttons.
+    var candidates = [];
+    try {
+      candidates = Array.from(document.querySelectorAll(
+        'button, [role="button"], [aria-label], [title], mat-icon,' +
+        ' [class*="hamburger"], [class*="menu-toggle"], [class*="menu-icon"]'))
+        .filter(visible).map(function (el) {
+          return el.closest && el.closest('button, [role="button"], [tabindex]') || el;
+        });
+    } catch (_) { return false; }
+    candidates = candidates.filter(function (el, i, all) {
+      if (all.indexOf(el) !== i || !visible(el)) return false;
+      var title = norm((el.getAttribute &&
+        (el.getAttribute('aria-label') || el.getAttribute('title') ||
+         el.getAttribute('data-testid'))) || '');
+      var value = name(el);
+      if (/^(menu|menu glowne|menu portalu|otworz menu|pokaz menu|rozwin menu|otworz nawigacje)$/.test(title) ||
+          /^(menu|☰|≡)$/.test(value)) return true;
+      // Icon-only buttons often contain a Material menu glyph or three SVG bars.
+      var icon = el.querySelector && el.querySelector('mat-icon, .material-icons');
+      if (icon && norm(icon.textContent) === 'menu') return true;
+      var svg = el.querySelector && el.querySelector('svg');
+      if (!svg) return false;
+      var lines = svg.querySelectorAll ? svg.querySelectorAll('line') : [];
+      var paths = svg.querySelectorAll ? svg.querySelectorAll('path') : [];
+      var horizontal = Array.from(lines).filter(function (v) {
+        return v.getAttribute('y1') === v.getAttribute('y2');
+      }).length;
+      var d = Array.from(paths).map(function(v) {
+        return norm(v.getAttribute('d') || '').replace(/\s/g,'');
+      }).join(' ');
+      var hamburger = horizontal >= 3 ||
+        /m[234]6h(16|18)|m[234]18h(16|18)|m[34]4h(16|18)/.test(d);
+      return hamburger && !!(el.closest && el.closest(
+        'header, nav, [role="banner"], [class*="header"], [class*="toolbar"]'));
+    });
+    return candidates.length === 1 && click(candidates[0], 'menu usług');
+  }
   function openExamMenuLeaf() {
     // Angular menus sometimes attach handlers to an <li>, <div> or a
     // mat-list-item rather than rendering a literal <button>/<a>.
@@ -92,22 +139,27 @@
         ' [role="navigation"] span, [role="navigation"] div,' +
         ' [role="menu"] span, [role="menuitem"], mat-list-item,' +
         ' .mat-list-item, [class*="menu"] span, [class*="nav"] span,' +
-        ' [class*="tile"] span, [class*="card"] span'))
+        ' [class*="tile"] span, [class*="card"] span,' +
+        ' span, p, li, label, [class*="service"] div'))
         .filter(visible).filter(function (el) {
           return examMenuAction(norm(el.textContent || ''));
         });
     } catch (_) { return false; }
     if (!possible.length) return false;
+    // Prefer deepest exact-text leaf, so nesting does not count as ambiguity.
+    possible = possible.filter(function (el) {
+      return !possible.some(function (other) {
+        return other !== el && el.contains && el.contains(other);
+      });
+    });
     var targets = [];
     possible.forEach(function (el) {
       var target = el.closest(
         'a, button, [role="button"], [role="link"], [role="menuitem"],' +
         ' [onclick], [tabindex], mat-list-item, .mat-list-item');
-      if (!target) {
-        var li = el.closest('li');
-        var nav = el.closest('nav, aside, [role="navigation"], [role="menu"]');
-        if (li && nav) target = li;
-      }
+      // Clicking the text itself bubbles to the parent Angular click handler
+      // even when the service tile is a plain div rather than a link/button.
+      if (!target) target = el;
       if (target && visible(target) && targets.indexOf(target) < 0)
         targets.push(target);
     });
@@ -126,9 +178,19 @@
       var label = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
       if (label) labels.push(label.textContent);
     }
-    var parent = el.closest('mat-form-field, .mat-mdc-form-field, label, .form-group, fieldset') ||
-      el.parentElement;
-    if (parent) labels.push(String(parent.innerText || '').slice(0, 120));
+    var parent = el.closest(
+      'mat-form-field, .mat-mdc-form-field, .MuiFormControl-root,' +
+      ' .MuiTextField-root, .form-group, .form-field, .p-dropdown,' +
+      ' .p-select, .ant-select, .ng-select, label, fieldset') || el.parentElement;
+    if (parent) labels.push(String(parent.innerText || '').slice(0, 180));
+    // Floating "Numer profilu" and "Kategoria" labels may be two wrapper
+    // levels above the actual custom select. Stop before the whole form.
+    if (!/(numer profilu|kategoria|osrodek|rodzaj egzamin|pkk|word)/.test(norm(labels.join(' ')))) {
+      for (var n = 0, node = el.parentElement; node && n < 3; n++, node=node.parentElement) {
+        var t = norm(node.innerText || '');
+        if (t.length < 160 && t) labels.push(t);
+      }
+    }
     return norm(labels.join(' '));
   }
   function updateSelect(select, option, reason) {
@@ -186,8 +248,17 @@
   function openCombobox(reason, label) {
     if (changed[reason]) return false;
     var els = Array.from(document.querySelectorAll(
-      '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container, .mat-select-trigger, button[aria-haspopup="listbox"]'))
+      '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container,' +
+      ' .mat-select-trigger, .MuiSelect-select, .MuiAutocomplete-inputRoot,' +
+      ' .p-dropdown, .p-dropdown-label, .p-select, .ant-select-selector,' +
+      ' input[readonly], button[aria-haspopup="listbox"]'))
       .filter(visible).filter(function (el) { return label.test(fieldLabel(el)); });
+    // Prefer the inner interactive control if wrapper and inner input match.
+    els = els.filter(function(el) {
+      return !els.some(function(other) {
+        return other !== el && el.contains && el.contains(other);
+      });
+    });
     if (els.length !== 1) return false;
     if (clicks >= maxClicks) return false;
     pending = reason;
@@ -196,7 +267,9 @@
   function selectOpenOption() {
     if (!pending) return false;
     var options = Array.from(document.querySelectorAll(
-      '[role="option"], mat-option, .mat-mdc-option, .ng-option')).filter(visible);
+      '[role="option"], mat-option, .mat-mdc-option, .ng-option,' +
+      ' .MuiMenuItem-root, .p-dropdown-item, .p-select-option,' +
+      ' [role="listbox"] li, li[aria-selected]')).filter(visible);
     if (!options.length) { pending = null; return false; }
     var regex = pending === 'osrodek' ?
       /^(mord krakow|malopolski osrodek ruchu drogowego w krakowie)$/ :
@@ -206,7 +279,7 @@
     var matches = pending === 'numer PKK'
       ? options.filter(function (el) {
           var value = name(el);
-          return value && !/^(wybierz|wybierz profil|brak profilu)/.test(value) &&
+          return value && !/^(wybierz|wybierz profil|brak profilu|dodaj|utworz)/.test(value) &&
             !/\bpkz\b/.test(value);
         })
       : regex ? options.filter(function (el) { return regex.test(name(el)); }) : [];
@@ -222,18 +295,30 @@
   function chooseProfileType() {
     if (changed['profil PKK']) return false;
     var body = norm(document.body && document.body.innerText || '');
-    if (!/rodzaj profilu|profil pkk|profil pkz|wybierz profil/.test(body)) return false;
-    if (uniqueClick(function (s) { return /^pkk$/.test(s); }, 'profil PKK')) return true;
-    // Native radio inputs and custom radio-group controls are not buttons.
+    if (!/wybor rodzaju profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body)) return false;
     var candidates = Array.from(document.querySelectorAll(
       'input[type="radio"], [role="radio"], label')).filter(visible)
-      .filter(function (el) {
-        var val = norm(el.value || el.getAttribute('aria-label') || el.innerText ||
-          el.textContent || '');
-        return val === 'pkk' || val === 'profil pkk';
+      .filter(function(el) {
+        var txt = norm((el.getAttribute && el.getAttribute('aria-label')) ||
+          el.innerText || el.textContent || el.value || '');
+        return txt === 'pkk' || txt === 'profil pkk' ||
+          /^pkk\s*-\s*profil kandydata na kierowce/.test(txt);
       });
-    // Nested label + input count as different candidates: do not guess.
-    return candidates.length === 1 && click(candidates[0], 'profil PKK');
+    // Choose only one candidate, avoiding duplicated nested labels.
+    candidates = candidates.filter(function(el) {
+      return !candidates.some(function(other) {
+        return other !== el && el.contains && el.contains(other);
+      });
+    });
+    if (candidates.length !== 1) return false;
+    var chosen = candidates[0], child = chosen.querySelector &&
+      chosen.querySelector('input[type="radio"]:checked, [role="radio"][aria-checked="true"]');
+    if (chosen.checked || chosen.getAttribute('aria-checked') === 'true' ||
+        (chosen.control && chosen.control.checked) || child) {
+      changed['profil PKK'] = true;
+      return false;
+    }
+    return click(chosen, 'profil PKK');
   }
   function fillDateFrom() {
     if (changed['data od']) return false;
@@ -334,6 +419,7 @@
       if (uniqueClick(examMenuAction,
         'otwarcie zakładki Zarezerwuj termin egzaminu')) return;
       if (openExamMenuLeaf()) return;
+      if (openServicesMenu(body)) return;
     }
 
     // Search action is only used once criteria are visible, never on a list of slots.
@@ -428,6 +514,7 @@
       controls:controls, fields:fields,
       otherTags:otherTags, embeddedFrames:embedded, shadowHosts:shadowHosts,
       menuTextVisible:menuLabelVisible,
+      menuOpened:!!changed['menu usług'],
       screen: /login|signin|authorize|logowanie|identity/.test(norm(location.pathname)) ? 'logowanie' :
         /checkout|payment|platnosc|podsumowanie/.test(norm(location.pathname)) ? 'platnosc' :
         /wybierz godzine|dostepne terminy egzaminow|lista terminow/.test(body) ? 'terminy' :
