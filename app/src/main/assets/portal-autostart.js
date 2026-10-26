@@ -105,6 +105,7 @@
     var fields = Array.from(document.querySelectorAll('select')).filter(visible)
       .filter(function (el) { return /(profil|pkk)/.test(fieldLabel(el)); });
     if (fields.length !== 1) return false;
+    if (!changed['profil PKK'] && !/pkk/.test(fieldLabel(fields[0]))) return false;
     var options = Array.from(fields[0].options).filter(function (o) {
       return !o.disabled && !!o.value && !/^(wybierz|select|--)/.test(norm(o.text));
     });
@@ -186,7 +187,14 @@
       /\d{1,2}:\d{2}/.test(body);
   }
   function unsafeToProceed(body) {
-    return /podsumowanie rezerwacji|metoda platnosci|oplac egzamin|potwierdz rezerwacje|zaplac|numer rezerwacji/.test(body);
+    var route = norm(location.pathname || '');
+    if (/checkout|payment|platnosc|podsumowanie|potwierdzenie/.test(route)) return true;
+    // Inspect the active heading, not the entire site's navigation/footer:
+    // menu links like "Opłać egzamin" may exist on every page.
+    var heading = document.querySelector(
+      'main h1, [role="main"] h1, main h2, [role="main"] h2, h1, h2');
+    var relevant = heading ? norm(heading.textContent || heading.innerText) : body;
+    return /podsumowanie rezerwacji|metoda platnosci|oplac egzamin|potwierdz rezerwacje|zaplac|numer rezerwacji/.test(relevant);
   }
   function scan() {
     if (!settings.enabled || stopped || !allowed() || !document.body) return;
