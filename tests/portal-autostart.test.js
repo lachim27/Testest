@@ -212,3 +212,29 @@ test('does not guess if only different MORD branches are offered', () => {
   assert.equal(f.select.value,'');
   assert.deepEqual(f.events,[]);
 });
+
+
+test('menu mention of payment does not block booking form launch',()=>{
+  const f=fixture('Moje konto, menu: Opłać egzamin, Zarezerwuj termin',
+    ['Zarezerwuj termin']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['Zarezerwuj termin']);
+});
+
+test('manual retry resets a paused setup and returns anonymized controls',()=>{
+  const f=fixture('Konto użytkownika. Dostępne usługi.',
+    ['Zarezerwuj termin egzaminu']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['Zarezerwuj termin egzaminu']);
+  const diag=f.window.__zlapFormPrep.diagnose();
+  assert.equal(diag.script,true);
+  assert.equal(diag.enabled,true);
+  assert.equal(diag.controls.start,1);
+  assert.equal(diag.actions,1);
+  const rerun=f.window.__zlapFormPrep.retry();
+  assert.equal(rerun.script,true);
+  assert.equal(rerun.actions,1);
+  assert.deepEqual(f.clicked,[
+    'Zarezerwuj termin egzaminu','Zarezerwuj termin egzaminu'
+  ]);
+});
