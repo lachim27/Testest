@@ -42,7 +42,9 @@
   }
   function buttons() {
     return Array.from(document.querySelectorAll(
-      'button, a, [role="button"], [role="option"], mat-option, input[type="button"]'))
+      'button, a, [role="button"], [role="link"], [role="menuitem"],' +
+      ' [role="option"], mat-option, mat-list-item, .mat-list-item,' +
+      ' [tabindex], input[type="button"]'))
       .filter(visible);
   }
   function name(el) {
@@ -61,6 +63,13 @@
   }
   function uniqueClick(test, reason) {
     var matches = buttons().filter(function (el) { return test(name(el), el); });
+    // Some navigation components expose both an outer <a> and an inner
+    // role=button with identical text. Treat nested matches as one action.
+    matches = matches.filter(function (el) {
+      return !matches.some(function (other) {
+        return other !== el && el.contains && el.contains(other);
+      });
+    });
     return matches.length === 1 && click(matches[0], reason);
   }
   // This is the exact menu service leading TO the exam search form.
@@ -70,6 +79,45 @@
     return label === 'zarezerwuj termin egzaminu' ||
       label === 'zarezerwuj termin' ||
       label === 'rezerwacja terminu egzaminu';
+  }
+  function openExamMenuLeaf() {
+    // Angular menus sometimes attach handlers to an <li>, <div> or a
+    // mat-list-item rather than rendering a literal <button>/<a>.
+    // Only accept the exact user-confirmed text on a single visible leaf
+    // within a menu/navigation or a clearly clickable parent.
+    var possible = [];
+    try {
+      possible = Array.from(document.querySelectorAll(
+        'nav span, nav div, nav li, aside span, aside div, aside li,' +
+        ' [role="navigation"] span, [role="navigation"] div,' +
+        ' [role="menu"] span, [role="menuitem"], mat-list-item,' +
+        ' .mat-list-item, [class*="menu"] span, [class*="nav"] span,' +
+        ' [class*="tile"] span, [class*="card"] span'))
+        .filter(visible).filter(function (el) {
+          return examMenuAction(norm(el.textContent || ''));
+        });
+    } catch (_) { return false; }
+    if (!possible.length) return false;
+    var targets = [];
+    possible.forEach(function (el) {
+      var target = el.closest(
+        'a, button, [role="button"], [role="link"], [role="menuitem"],' +
+        ' [onclick], [tabindex], mat-list-item, .mat-list-item');
+      if (!target) {
+        var li = el.closest('li');
+        var nav = el.closest('nav, aside, [role="navigation"], [role="menu"]');
+        if (li && nav) target = li;
+      }
+      if (target && visible(target) && targets.indexOf(target) < 0)
+        targets.push(target);
+    });
+    targets = targets.filter(function (el) {
+      return !targets.some(function (other) {
+        return other !== el && el.contains && el.contains(other);
+      });
+    });
+    return targets.length === 1 &&
+      click(targets[0], 'otwarcie zakładki Zarezerwuj termin egzaminu');
   }
   function fieldLabel(el) {
     var labels = [el.getAttribute('aria-label'), el.getAttribute('placeholder'),
@@ -282,8 +330,11 @@
       });
     // The portal's navigation may mention PKK even on its homepage. The presence
     // of a label alone is not proof the reservation wizard is already open.
-    if (!hasWizard && uniqueClick(examMenuAction,
-      'otwarcie zakładki Zarezerwuj egzamin')) return;
+    if (!hasWizard && !changed['otwarcie zakładki Zarezerwuj termin egzaminu']) {
+      if (uniqueClick(examMenuAction,
+        'otwarcie zakładki Zarezerwuj termin egzaminu')) return;
+      if (openExamMenuLeaf()) return;
+    }
 
     // Search action is only used once criteria are visible, never on a list of slots.
     if (!awaitingResults && /rodzaj egzaminu|egzamin praktyczny|praktyka/.test(body) &&
@@ -308,9 +359,10 @@
     }
     var d = diagnose();
     report('Brak kolejnego bezpiecznego kroku. ' +
-      (d.bookingAction ? 'Widzę przycisk rezerwacji, ale nie jest jednoznaczny. ' :
-       d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
-       'Nie widzę jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
+      (d.wizard ? 'Formularz jest widoczny, nie rozpoznano kolejnej kontrolki. ' :
+       changed['otwarcie zakładki Zarezerwuj termin egzaminu'] ?
+       'Otworzono zakładkę, ale nie rozpoznano kolejnego pola. ' :
+       'Nie rozpoznano jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
       'Opcje → Diagnostyka → Kopiuj raport automatu.');
   }
   function diagnose() {
@@ -335,6 +387,7 @@
         .filter(visible);
     } catch (_) {}
     var fields = {profile:0,center:0,category:0,type:0,date:0,other:0};
+    var otherTags = {select:0,combobox:0,radio:0,date:0,other:0};
     elements.forEach(function (el) {
       var label = '';
       try {label = fieldLabel(el);} catch (_) {}
@@ -344,13 +397,37 @@
         /rodzaj|typ egzamin/.test(label) ? 'type' :
         /data|date|termin/.test(label) ? 'date' : 'other';
       fields[key]++;
+      if (key === 'other') {
+        var tag = norm(el.tagName || '');
+        var type = norm(el.getAttribute && el.getAttribute('type') || '');
+        var role = norm(el.getAttribute && el.getAttribute('role') || '');
+        var kind = tag === 'select' ? 'select' :
+          role === 'combobox' ? 'combobox' :
+          type === 'radio' ? 'radio' :
+          type === 'date' ? 'date' : 'other';
+        otherTags[kind]++;
+      }
     });
+    var embedded = 0, shadowHosts = 0, menuLabelVisible = false;
+    try {
+      embedded = document.querySelectorAll('iframe').length;
+      shadowHosts = Array.from(document.querySelectorAll('*'))
+        .slice(0,2000).filter(function(el){return !!el.shadowRoot;}).length;
+      menuLabelVisible = Array.from(document.querySelectorAll(
+        'nav, aside, [role="navigation"], [role="menu"], mat-list-item'))
+        .filter(visible).some(function (el) {
+          return norm(el.textContent || '').indexOf('zarezerwuj termin egzaminu')>=0;
+        });
+    } catch (_) {}
     var body = norm((document.body && document.body.innerText || '').slice(0,20000));
     return {
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
-      actions:clicks, last:lastReport, wizard:elements.length>0,
+      actions:clicks, last:lastReport,
+      wizard:elements.length>fields.other,
       controls:controls, fields:fields,
+      otherTags:otherTags, embeddedFrames:embedded, shadowHosts:shadowHosts,
+      menuTextVisible:menuLabelVisible,
       screen: /login|signin|authorize|logowanie|identity/.test(norm(location.pathname)) ? 'logowanie' :
         /checkout|payment|platnosc|podsumowanie/.test(norm(location.pathname)) ? 'platnosc' :
         /wybierz godzine|dostepne terminy egzaminow|lista terminow/.test(body) ? 'terminy' :

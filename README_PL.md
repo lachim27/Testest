@@ -122,3 +122,11 @@ Użytkownik potwierdził, że zakładka prowadząca do listy dostępnych termin�
 Wersja 0.23 doprecyzowuje sekwencję w automatycznym przygotowaniu: **menu „Zarezerwuj termin egzaminu” → MORD Kraków i pojedynczy PKK → „Dalej” → egzamin praktyczny → lista terminów**. Poprawiono warunek przejścia „Dalej” dla pierwszego kroku z PKK i ośrodkiem, który wcześniej wymagał innych etykiet. Nie uruchamia to funkcji autorezerwacji ani nie wybiera dostępnej godziny czy płatności. Dodano testy na dokładną nazwę menu i etap PKK → Dalej.
 
 Działania na żywej, zalogowanej stronie nadal wymagają sprawdzenia. Jeśli nie przechodzi prawidłowo, użyj **Opcje → Diagnostyka → Kopiuj raport automatu formularza (bez PKK)** w aplikacji 0.22 lub nowszej.
+
+## 0.24 — brak rozpoznanych przycisków w menu
+
+W raporcie z rzeczywistego telefonu skrypt był uruchomiony, ale wykrył **0 kliknięć**, **0 przycisków startowych**, **0 rozpoznanych pól** i **1 nieznaną kontrolkę**, przy ekranie `start/inne`. Nie dowodzi to, że formularz PKK jest już otwarty. Poprawiono rozpoznawanie dokładnej etykiety **„Zarezerwuj termin egzaminu”** także dla elementów nawigacji Angular, list i kafelków, które nie są zwykłymi linkami/przyciskami. Klikana jest tylko pojedyncza jednoznaczna kontrolka, bez wybierania godziny ani tworzenia rezerwacji. Automat nie naciska tej samej zakładki wielokrotnie, jeśli strona nie pokazała jeszcze dalszych pól.
+
+Raport diagnostyczny 0.24 rozszerzono o **typy nierozpoznanych kontrolek**, liczbę ramek `iframe`, widoczność tekstu zakładki w nawigacji oraz liczbę hostów Shadow DOM. Raport nie udostępnia wartości pól, PKK, hasła, ciasteczek ani tekstu strony.
+
+Jeśli menu nadal nie zostanie rozpoznane, wklej nowy raport po zalogowaniu w Portalu, a opcjonalnie prześlij zrzut ekranu zakładki z zasłoniętymi danymi osobowymi. Bez wyglądu rzeczywistej zalogowanej strony nie można zagwarantować pełnego przejścia formularza, nawet przy pomyślnych testach automatu na atrapach DOM. 

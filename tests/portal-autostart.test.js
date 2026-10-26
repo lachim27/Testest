@@ -287,3 +287,82 @@ test('after choosing PKK the first wizard step can advance with Dalej',()=>{
   window.__zlapFormPrep.scan();
   assert.deepEqual(clicked,['PKK','Dalej']);
 });
+
+
+test('opens exact booking-service title inside a nav-list li (not a button)',()=>{
+  const clicks=[];
+  const nav={
+    nodeType:1, isConnected:true, disabled:false, parentElement:null,
+    getClientRects(){return [1];},
+    innerText:'Zarezerwuj termin egzaminu',
+    textContent:'Zarezerwuj termin egzaminu',
+    click(){clicks.push('menu');},
+    getAttribute(){return null;},
+    contains(other){return other===this;},
+    closest(selector){
+      if(selector.indexOf('li')>=0) return this;
+      return null;
+    }
+  };
+  const span=Object.assign({},nav,{
+    parentElement:nav,
+    click(){clicks.push('span');},
+    contains(other){return other===this;},
+    closest(selector){
+      if(selector.indexOf('li')>=0) return nav;
+      return null;
+    }
+  });
+  const doc={
+    body:{innerText:'Moje konto, wybierz usługę'},
+    documentElement:null,
+    addEventListener(){}, querySelector(){return null;},
+    querySelectorAll(query){
+      if(query.startsWith('nav span, nav div, nav li'))return [span];
+      if(query.indexOf('select, [role="combobox"]')===0)return [];
+      if(query.indexOf('input[type="radio"], input[type="date"]')===0)return [];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class {},class {}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(clicks,['menu']);
+});
+
+test('diagnostics classify unknown control by type without exposing its value',()=>{
+  const input={
+    nodeType:1,isConnected:true,disabled:false,parentElement:null,
+    tagName:'INPUT',value:'SECRET-NUMBER-MUST-NOT-LEAK',
+    getClientRects(){return [1];},
+    getAttribute(k){return k==='type'?'radio':null;},
+    closest(){return null;},id:''
+  };
+  const doc={
+    body:{innerText:'Moje konto'},documentElement:null,
+    addEventListener(){},querySelector(){return null;},
+    querySelectorAll(q){
+      if(q.indexOf('select, [role="combobox"]')===0)return [input];
+      return [];
+    }
+  };
+  const wnd={setInterval(){},MutationObserver:null,ZlapBridge:{postMessage(){}}};
+  new Function('window','document','location','getComputedStyle','CSS','Event','MutationObserver',source)(
+    wnd,doc,{protocol:'https:',hostname:'info-kierowca.pl',pathname:'/reservation'},
+    ()=>({display:'block',visibility:'visible'}),{escape:x=>x},class {},class {}
+  );
+  wnd.__zlapFormPrep.configure({enabled:true});
+  const data=wnd.__zlapFormPrep.diagnose();
+  assert.equal(data.fields.other,1);
+  assert.equal(data.otherTags.radio,1);
+  assert.ok(!JSON.stringify(data).includes('SECRET-NUMBER-MUST-NOT-LEAK'));
+});
+
+test('payment confirmation text keeps automatic opening disabled',()=>{
+  const f=fixture('Podsumowanie rezerwacji, płatność', ['Zarezerwuj termin egzaminu']);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+});
