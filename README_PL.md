@@ -77,3 +77,6 @@ W Ustawienia → Alarm dźwiękowy są dwa niezależne przełączniki (domyślni
 Alarm trwa najwyżej 2 minuty, korzysta z dźwięku alarmów i wibracji. Powiadomienie ma przyciski „Wycisz” i „Otwórz portal” (otwarcie także wycisza). Znalezienie jest wyraźnie opisane jako dostępność, bez potwierdzenia rezerwacji. Potwierdzona rezerwacja ma własny komunikat i ma pierwszeństwo przed alarmem znalezienia. Niepewna lub odrzucona rezerwacja nie uruchamia alarmu sukcesu. Nadal trzeba opłacić zajęty egzamin w portalu.
 
 Przycisk „Test alarmu” nie kontaktuje się z portalem i nie rezerwuje egzaminu. Wymagane są powiadomienia; Android może ograniczyć uruchamianie usługi w tle. Głośność alarmów, tryb Nie przeszkadzać i ustawienia urządzenia pozostają pod kontrolą użytkownika. Aplikacja nie zwiększa automatycznie głośności i nie omija DND. Powiadomienie może pojawić się na ekranie blokady zgodnie z jego ustawieniami; aplikacja nie wymusza pełnoekranowego połączenia. Przetestuj dźwięk i wyciszenie także przy zablokowanym ekranie.
+
+## Aktualizacje bez reinstalacji (0.18)
+Dodano podpisywanie release stałym kluczem z GitHub Secrets i rosnący numer wersji. Jednorazowa konfiguracja i ograniczenia przejścia ze starych wersji są opisane w [SIGNING_PL.md](SIGNING_PL.md). Bez skonfigurowanego klucza nie publikujemy APK z przypadkowym podpisem.

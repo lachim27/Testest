@@ -1,77 +1,83 @@
-
 name: ZlapEgzamin Android APK
 
 'on':
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: android-release-main
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-
-
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
-
-
       - name: Setup compatible Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-
-      - name: Validate portal script
+      - name: Restore persistent signing identity
+        id: signing
+        env:
+          ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
+        run: python3 scripts/restore-signing.py
+      - name: Validate portal and signing configuration
         run: |
           node --check app/src/main/assets/slot-hook.js
           node --test tests/booking-safety.test.js
-
-      - name: Build APK
-        run: gradle testDebugUnitTest assembleDebug --no-daemon
-
-      - name: Verify APK exists
+          python3 -m unittest discover -s tests -p 'test_signing.py'
+      - name: Build and test
+        run: gradle testDebugUnitTest assembleRelease --no-daemon
+      - name: Verify signed APK and record public fingerprint
+        if: steps.signing.outputs.configured == 'true'
         run: |
-          ls -lah app/build/outputs/apk/debug/
-          test -s app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload APK
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"
+          sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" > signing-certificate.sha256
+          test -s signing-certificate.sha256
+          keytool -exportcert -keystore "$ZLAP_KEYSTORE" -storetype PKCS12 -storepass:env ZLAP_KEY_PASSWORD -alias "$ZLAP_KEY_ALIAS" -file "$RUNNER_TEMP/signing-cert.der"
+          sha256sum "$RUNNER_TEMP/signing-cert.der" | cut -d ' ' -f 1 > "$RUNNER_TEMP/expected-fingerprint"
+          diff -i signing-certificate.sha256 "$RUNNER_TEMP/expected-fingerprint"
+      - name: Upload signed APK
+        if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ZlapEgzamin-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            signing-certificate.sha256
           if-no-files-found: error
           retention-days: 30
-
-      # Only publish when the commit explicitly includes [apk].
-      # The resulting release asset is a direct APK, not an Actions ZIP.
       - name: Publish direct APK download
-        if: contains(github.event.head_commit.message, '[apk]')
+        if: steps.signing.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[apk]'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk ZlapEgzamin-Android.apk
-          gh release create "android-beta-${GITHUB_RUN_NUMBER}" ZlapEgzamin-Android.apk \
+          cp app/build/outputs/apk/release/app-release.apk ZlapEgzamin-Android.apk
+          gh release create "android-stable-${GITHUB_RUN_NUMBER}" ZlapEgzamin-Android.apk signing-certificate.sha256 \
             --target "${GITHUB_SHA}" \
             --title "ZlapEgzamin Android (#${GITHUB_RUN_NUMBER})" \
-            --notes "Wersja testowa z alarmem nowego pasującego terminu i potwierdzonej rezerwacji. W ustawieniach dostępny test alarmu. Autorezerwacja wymaga włączenia; płatność w portalu." \
+            --notes "Staly podpis APK. Kolejne wersje z tym samym kluczem instaluja sie jako aktualizacja bez kasowania danych. Przejscie ze starszych APK debug moze wymagac jednorazowej reinstalacji." \
             --prerelease
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/zlap-signing.p12"

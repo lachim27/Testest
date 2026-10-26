@@ -4,3 +4,9 @@ local.properties
 build/
 app/build/
 *.iml
+
+# Private signing material must never enter Git
+*.jks
+*.keystore
+*.p12
+signing-bundle.json

@@ -9,8 +9,23 @@ android {
         applicationId = "pl.zlapegzamin.test"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.17-exam-alarms"
+        versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
+        versionName = "0.18-stable-signing"
+    }
+    val signingFile = System.getenv("ZLAP_KEYSTORE")
+    if (!signingFile.isNullOrBlank()) {
+        signingConfigs {
+            create("persistentRelease") {
+                storeFile = file(signingFile)
+                storePassword = System.getenv("ZLAP_KEY_PASSWORD")
+                keyAlias = System.getenv("ZLAP_KEY_ALIAS")
+                keyPassword = System.getenv("ZLAP_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+        buildTypes.getByName("release") {
+            signingConfig = signingConfigs.getByName("persistentRelease")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
