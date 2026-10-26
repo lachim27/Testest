@@ -184,3 +184,11 @@ Na zdjęciach użytkownika pojawiły się karta **17/12/2026, 06:00, egzamin pra
 Testy jednostkowe (47/47) obejmują zdjęciowy przypadek i negatywne scenariusze: inna data, godzina, kategoria, brak miejsc, błędne dane w oknie potwierdzenia, niejednoznaczna karta oraz rozwinięcie zwiniętej daty. **Testy korzystają z symulowanego DOM; nie przeprowadzono testu prawdziwego zajęcia miejsca na zalogowanym koncie**, więc zgodność z bieżącym układem portalu wymaga weryfikacji.
 
 Uwaga: termin **17 grudnia 2026** jest tylko przykładem ze zrzutu, nie będzie wybrany, jeżeli zakres dat aplikacji go nie obejmuje.
+
+## 0.31 — automatyczny wybór „Egzamin praktyczny”
+
+Zrzut z rzeczywistego drugiego etapu formularza ujawnił cztery przyciski RADIO pod etykietą **Wybór rodzaju egzaminu**: **Egzamin teoretyczny**, **Egzamin praktyczny**, **Egzamin łączony (Teoria + Praktyka)** oraz zaznaczone domyślnie **Wyświetl wszystkie typy egzaminu**. W 0.30 automat rozpoznawał rozwijane pole rodzaju egzaminu, ale nie widział przycisków radio, więc pozostawiał wszystkie typy.
+
+Wersja 0.31 rozpoznaje wyłącznie ten etap: obecność nagłówków „Wybór terminu egzaminu dla” i „Wybór rodzaju egzaminu”, a także „Wyświetl wszystkie typy egzaminu”. Tylko gdy istnieje jeden jednoznaczny radio-option o dokładnej etykiecie **Egzamin praktyczny**, kliknie go (lub pozostawi już zaznaczony). Nie wybiera teoretycznego, łączonego ani opcji „wszystkie”. Nie ingeruje w listę konkretnych terminów ani okno potwierdzania. Zachowano działające przejście pierwszego formularza, godziny i daty autorezerwacji oraz limity HTTP.
+
+Raport automatu pokazuje teraz: „Ekran wyboru rodzaju egzaminu” i „zaznaczanie praktycznego” (próba kliknięcia lub rozpoznanie już zaznaczonego). **To nie jest potwierdzenie rezerwacji.** Testy skryptu 51/51 przeszły z symulacją czterech kart oraz przypadków negatywnych. Realne zachowanie portalu wymaga testu w aplikacji po zalogowaniu.
