@@ -41,7 +41,8 @@ jobs:
       - name: Validate portal and signing configuration
         run: |
           node --check app/src/main/assets/slot-hook.js
-          node --test tests/booking-safety.test.js
+          node --check app/src/main/assets/portal-autostart.js
+          node --test tests/booking-safety.test.js tests/portal-autostart.test.js
           python3 -m unittest discover -s tests -p 'test_signing.py'
       - name: Build and test
         run: gradle testDebugUnitTest assembleRelease --no-daemon
