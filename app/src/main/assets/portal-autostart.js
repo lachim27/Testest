@@ -459,7 +459,7 @@
   function chooseProfileType() {
     if (changed['profil PKK']) return false;
     var body = norm(document.body && document.body.innerText || '');
-    if (!/wybor rodzaju profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body))
+    if (!/wybor rodzaju profilu|wybierz rodzaj profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body))
       return false;
     var candidates = radioChoices(function(txt) {
       return txt==='pkk' || txt==='profil pkk' ||
