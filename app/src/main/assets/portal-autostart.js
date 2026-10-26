@@ -601,7 +601,7 @@
     if (chooseProfileType()) return;
     if (chooseSingleProfile()) return;
     // PKK first: category can be disabled until a profile is selected.
-    if (changed['profil PKK'] &&
+    if ((changed['profil PKK'] || /numer profilu/.test(body)) &&
         openCombobox('numer PKK', /(numer profilu|numer pkk|profil kandydata)/))
       return;
     if (selectNative('kategoria', /kategoria/, /^(kategoria\s+)?b$/)) return;
@@ -612,11 +612,14 @@
     // main card at Nowohucka 33a (never Kraków Balicka).
     if (chooseWordMode()) return;
     if (chooseKrakowWordCard()) return;
-    if (changed['wybór WORD'] && selectNative('osrodek',
+    if ((changed['wybór WORD'] ||
+         !/wybor osrodka egzaminacyjnego word/.test(body)) &&
+        selectNative('osrodek',
         /(osrodek|word|mord|centrum egzamin)/,
         /^(mord krakow|krakow|malopolski osrodek ruchu drogowego w krakowie)$/))
       return;
-    if (changed['wybór WORD'] &&
+    if ((changed['wybór WORD'] ||
+         !/wybor osrodka egzaminacyjnego word/.test(body)) &&
         openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
 
     // Next step: choose practical exam, then search date list. Not a booking.
