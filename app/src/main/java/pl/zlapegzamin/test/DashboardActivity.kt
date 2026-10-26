@@ -409,15 +409,17 @@ class DashboardActivity : Activity() {
         android.app.AlertDialog.Builder(this, style)
             .setTitle("Włączyć autorezerwację?")
             .setMessage(
-                "ZłapEgzamin spróbuje samodzielnie ZAJĄĆ jedno wolne miejsce na egzamin " +
-                "praktyczny kat. B w MORD Kraków w zakresie " +
+                "ZłapEgzamin wybierze jedno pasujące miejsce w widocznej liście " +
+                "egzaminów praktycznych kat. B w MORD Kraków, w zakresie " +
                 monitor.dateFrom + " – " + monitor.dateTo +
                 ", w godzinach " + monitor.bookingTimeFrom + "–" + monitor.bookingTimeTo +
                 " (czas polski, włącznie).\n\n" +
-                "To wykonuje rzeczywistą operację na Twoim koncie info-kierowca.pl. " +
-                "Po potwierdzeniu rezerwacji dostaniesz alert na telefon i Telegram. " +
-                "Opłacenie egzaminu nadal należy do Ciebie (zwykle do 30 minut). " +
-                "Po sukcesie autorezerwacja wyłączy się sama."
+                "Aplikacja rozwinie odpowiednią datę, kliknie pasujący egzamin, " +
+                "sprawdzi okno Potwierdź wybrany egzamin i naciśnie Potwierdź i przejdź dalej. " +
+                "To może już rozpocząć rzeczywistą rezerwację na Twoim koncie. " +
+                "Po przejściu dalej automat zostanie wstrzymany do sprawdzenia " +
+                "statusu w Portalu. Płatność zawsze wykonujesz samodzielnie. " +
+                "Otwarta lista terminów musi być widoczna w aplikacji."
             )
             .setPositiveButton("Włącz autorezerwację") { _, _ ->
                 if (monitor.setAutoReserve(true)) {
@@ -855,9 +857,11 @@ class DashboardActivity : Activity() {
 
         val booking = card()
         put(booking, text("AUTOREZERWACJA – ZAJĘCIE MIEJSCA", 12f, blue, true), 12)
-        put(booking, text("ZłapEgzamin sam utworzy tymczasową rezerwację dla " +
-            "jednego terminu spełniającego zakres dat i godzin. Po potwierdzeniu przez portal wyśle " +
-            "powiadomienie i zatrzyma automat. Nie pobiera pieniędzy.", 14f, muted), 10)
+        put(booking, text("W 0.30 automat korzysta z widocznych kart w Portalu: rozwinie " +
+            "pasującą datę, wybierze egzamin B w określonych godzinach i kliknie " +
+            "Potwierdź i przejdź dalej po zgodności szczegółów. Następnie wstrzyma " +
+            "kolejne próby do sprawdzenia stanu rezerwacji. Nie pobiera pieniędzy. " +
+            "Działanie w tle zależy od obecności listy w WebView.", 14f, muted), 10)
         put(booking, text("GODZINY EGZAMINU", 12f, blue, true), 8)
         put(booking, text("Codziennie, czas polski; obie granice włącznie. " +
             "To godziny rozpoczęcia egzaminu, nie pracy automatu. " +

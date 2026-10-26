@@ -174,3 +174,13 @@ W 0.28 raport użytkownika pokazywał: wybrany PKK, numer profilu, tryb konkretn
 Przed kliknięciem nadal konieczne jest wybranie PKK, numeru profilu, konkretnego WORD-u i centrali Nowohucka oraz brak jawnie odmiennej kategorii niż B. W diagnostyce są nowe pola: **Pierwszy etap formularza rozpoznany**, **Wymagane wybory gotowe**, oraz liczba **przycisków Następny wykrytych / aktywnych / nieaktywnych**, bez wartości danych osobowych lub PKK. Testy JS: 39/39, w tym symulowane przejście z tekstem „Następny →”.
 
 Testy symulowane nie zastępują testowania rzeczywistego widoku po zalogowaniu. Jeżeli nadal stoi w miejscu, poproś o raport tych nowych trzech wskaźników lub screenshot z zasłoniętymi danymi.
+
+## 0.30 — automatyczny wybór terminu w widocznym Portalu
+
+Na zdjęciach użytkownika pojawiły się karta **17/12/2026, 06:00, egzamin praktyczny kat. B, 4 wolne miejsca** i okno **Potwierdź wybrany egzamin**, z przyciskiem **Potwierdź i przejdź dalej**. Dotychczasowa automatyczna próba tworzyła rezerwację bezpośrednio przez wewnętrzne API i nie klikała tych elementów. Od 0.30 moduł Androida wybiera termin spełniający zapisane ustawienia **Od–Do** i **Godzina od–do**, próbuje rozwinąć dokładną datę, wybiera tylko jednoznaczną kartę praktycznego B z wolnymi miejscami i właściwą godziną, sprawdza **datę, godzinę, kategorię B i praktyczny egzamin w oknie modalnym**, po czym naciska dokładnie **Potwierdź i przejdź dalej**.
+
+**Nie przesyła osobno żądania /Reservations/create; dwa mechanizmy nie rezerwują równocześnie.** Nie klika płatności ani nie zgaduje niejednoznacznych pozycji. Po kliknięciu potwierdzenia nie uznaje automatycznie miejsca za zarezerwowane: **wstrzymuje kolejne próby**, powiadamia i żąda sprawdzenia statusu rezerwacji w Portalu (możliwa rezerwacja oczekująca na opłatę). Jeżeli nie widzi listy terminów, niczego nie klika — należy otworzyć listę w zakładce Portal; nie ma gwarancji działania przy ukrytym WebView. Aplikacja nie powtarza w ciemno wysłanej rezerwacji.
+
+Testy jednostkowe (47/47) obejmują zdjęciowy przypadek i negatywne scenariusze: inna data, godzina, kategoria, brak miejsc, błędne dane w oknie potwierdzenia, niejednoznaczna karta oraz rozwinięcie zwiniętej daty. **Testy korzystają z symulowanego DOM; nie przeprowadzono testu prawdziwego zajęcia miejsca na zalogowanym koncie**, więc zgodność z bieżącym układem portalu wymaga weryfikacji.
+
+Uwaga: termin **17 grudnia 2026** jest tylko przykładem ze zrzutu, nie będzie wybrany, jeżeli zakres dat aplikacji go nie obejmuje.

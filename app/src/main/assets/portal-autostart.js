@@ -728,6 +728,241 @@
        'Nie rozpoznano jednoznacznej zakładki „Zarezerwuj termin egzaminu”. ') +
       'Opcje → Diagnostyka → Kopiuj raport automatu.');
   }
+
+  // Guided reservation through the same user-visible cards as the portal.
+  // Only the already-matched date from Android settings may be selected.
+  // No direct /Reservations/create POST, no payment, and no silent retries.
+  var bookingUi = null;
+  function bookingUiReport(kind, detail) {
+    try {
+      if (window.ZlapBridge && window.ZlapBridge.postMessage) {
+        window.ZlapBridge.postMessage(JSON.stringify({
+          kind:kind, date:bookingUi ? bookingUi.iso : '',
+          detail:String(detail || '').slice(0,100)
+        }));
+      }
+    } catch (_) {}
+  }
+  function bookingUiDate(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return null;
+    var day=iso.slice(0,10), hour=iso.slice(11,16);
+    if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(iso)) {
+      // Match local MORD Kraków clock time even when API date carries offset.
+      try {
+        var parts=new Intl.DateTimeFormat('en-GB', {
+          timeZone:'Europe/Warsaw',year:'numeric',month:'2-digit',day:'2-digit',
+          hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+        }).formatToParts(new Date(iso));
+        function part(kind) {return parts.filter(function(p){return p.type===kind;})[0].value;}
+        day=part('year')+'-'+part('month')+'-'+part('day');
+        hour=part('hour')+':'+part('minute');
+      } catch (_) {return null;}
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || hour > '23:59') return null;
+    return {
+      day:day,
+      label:day.slice(8,10)+'/'+day.slice(5,7)+'/'+day.slice(0,4),
+      hour:hour
+    };
+  }
+  function bookingUiSafeText(el) {
+    return norm((el && (el.innerText || el.textContent)) || '');
+  }
+  function bookingUiCardMatches(txt,hour) {
+    if (!/egzamin praktyczny/.test(txt) || !/\bkat(?:egoria)?\s*b\b/.test(txt)) return false;
+    if (!new RegExp('(?:^|[^0-9])'+hour.replace(':','\\:')+'(?![0-9])').test(txt)) return false;
+    var places = txt.match(/\b([0-9]+)\s+wolne?\s+miejsc(?:a)?\b/);
+    return !!places && Number(places[1])>0;
+  }
+  function bookingUiFindCard(target) {
+    var all=[];
+    try { all=Array.from(document.querySelectorAll('*')); } catch (_) {}
+    // Identify the date heading preceding the candidate card. A matching
+    // time on another day must never be clicked.
+    var headings = all.map(function(el, i) {
+      var txt = bookingUiSafeText(el);
+      return /^\d{2}\/\d{2}\/\d{4}$/.test(txt) ?
+        {index:i,date:txt} : null;
+    }).filter(Boolean);
+    var candidates = all.filter(function(el) {
+      if (!visible(el)) return false;
+      var txt=bookingUiSafeText(el);
+      return txt.length>25 && txt.length<450 &&
+        bookingUiCardMatches(txt,target.hour);
+    });
+    candidates = candidates.filter(function(el) {
+      return !candidates.some(function(other) {
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    candidates = candidates.filter(function(el) {
+      var index=all.indexOf(el);
+      var before=headings.filter(function(h){return h.index<index;});
+      return before.length && before[before.length-1].date===target.label;
+    });
+    if (candidates.length!==1) return null;
+    var card=candidates[0];
+    // The entire card may receive the Angular click, or its radio input.
+    // Prefer the uniquely identified radio control if available.
+    var radios=[];
+    try {radios=Array.from(card.querySelectorAll('input[type="radio"], [role="radio"]'));}catch(_){}
+    if (radios.length===1 && visible(radios[0])) {
+      if (radios[0].checked || radios[0].getAttribute('aria-checked')==='true')
+        return {node:card,already:true};
+      return {node:radios[0],already:false};
+    }
+    if (/^(button|label)$/i.test(card.tagName||'') || card.onclick ||
+        (card.getAttribute && (card.getAttribute('role')==='radio' ||
+          card.getAttribute('role')==='button'))) return {node:card,already:false};
+    // A div card with a click listener bound by Angular lacks onclick in DOM.
+    // Clicking the exact uniquely-matched card still bubbles to its handler.
+    if (/^div$/i.test(card.tagName||'')) return {node:card,already:false};
+    return null;
+  }
+  function bookingUiFindDateHeading(target) {
+    var matches=[];
+    try {
+      matches=Array.from(document.querySelectorAll('*')).filter(visible)
+        .filter(function(el){return bookingUiSafeText(el)===norm(target.label);});
+    } catch (_) {}
+    matches=matches.filter(function(el){
+      return !matches.some(function(other){
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    if (matches.length!==1) return null;
+    var heading=matches[0];
+    // A heading with an already-visible card must not be clicked again,
+    // as that would collapse it rather than reveal the requested slot.
+    var all=Array.from(document.querySelectorAll('*'));
+    var at=all.indexOf(heading);
+    if (all.slice(at+1).some(function(el){
+      var label=bookingUiSafeText(el);
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(label)) return false;
+      return visible(el) && label.length>25 && label.length<450 &&
+        /egzamin praktyczny/.test(label);
+    })) {
+      var nextDate=all.slice(at+1).findIndex(function(el){
+        return /^\d{2}\/\d{2}\/\d{4}$/.test(bookingUiSafeText(el));
+      });
+      var currentBlock=all.slice(at+1,
+        nextDate<0 ? all.length : at+1+nextDate);
+      if (currentBlock.some(function(el) {
+        var txt=bookingUiSafeText(el);
+        return visible(el) && txt.length>25 && txt.length<450 &&
+          /egzamin praktyczny/.test(txt);
+      })) return null;
+    }
+    var btn=heading.closest && heading.closest(
+      'button, [role="button"], summary, [aria-expanded]');
+    // A date bar may have a JavaScript click handler on a plain div.
+    return btn && visible(btn) ? btn : heading;
+  }
+  function bookingUiFindModal(target) {
+    var dialogs=[];
+    try {
+      dialogs=Array.from(document.querySelectorAll(
+        '[role="dialog"], [aria-modal="true"], .MuiDialog-paper,' +
+        ' .mat-dialog-container, .modal-dialog'));
+    } catch (_) {}
+    dialogs=dialogs.filter(visible).filter(function(el) {
+      var txt=bookingUiSafeText(el);
+      return txt.length<2000 && /potwierdz wybrany egzamin/.test(txt);
+    });
+    dialogs=dialogs.filter(function(el){
+      return !dialogs.some(function(other) {
+        return other!==el && el.contains && el.contains(other);
+      });
+    });
+    if (dialogs.length!==1) return null;
+    var modal=dialogs[0], txt=bookingUiSafeText(modal);
+    if (!/egzamin praktyczny/.test(txt) ||
+        !/kategoria\s+b\b/.test(txt) ||
+        txt.indexOf(target.label)<0 || txt.indexOf(target.hour)<0)
+      return {mismatch:true};
+    var controls=[];
+    try {controls=Array.from(modal.querySelectorAll('button, [role="button"]'))
+      .filter(visible).filter(function(el) {
+        return /^potwierdz i przejdz dalej$/.test(name(el));
+      });} catch (_) {}
+    if (controls.length!==1) return {mismatch:true};
+    return {button:controls[0],mismatch:false};
+  }
+  function bookingUiTick() {
+    if (!bookingUi || bookingUi.done) return;
+    var target=bookingUi;
+    if (Date.now()-target.started>25000) {
+      target.done=true;
+      bookingUiReport(target.stage==='expanding' ?
+        'booking_ui_no_card' : 'booking_ui_problem',
+        target.stage==='expanding' ?
+        'Po rozwinięciu daty nie widzę pasującej karty.' :
+        'Nie odnaleziono bezpiecznego potwierdzenia. Sprawdź Portal.');
+      return;
+    }
+    if (target.stage==='expanding') {
+      var chosen=bookingUiFindCard(target);
+      if (!chosen) return;
+      target.stage='selected';
+      bookingUiReport('booking_ui_selected','Rozwinięto datę i wybrano pasujący egzamin.');
+      if (!chosen.already) chosen.node.click();
+    }
+    var result=bookingUiFindModal(target);
+    if (!result) return;
+    if (result.mismatch) {
+      target.done=true;
+      bookingUiReport('booking_ui_problem','Nie zgadza się data/godzina/kategoria w oknie.');
+      return;
+    }
+    if (!result.button || !visible(result.button)) return;
+    // Exactly the requested exam is displayed in "Potwierdź wybrany egzamin".
+    // This is a single transition to the next portal screen, NOT payment.
+    target.done=true;
+    bookingUiReport('booking_ui_confirming','Potwierdzam dokładnie pasujący egzamin w oknie portalu.');
+    result.button.click();
+    bookingUiReport('booking_ui_advanced','Kliknięto Potwierdź i przejdź dalej; stan rezerwacji wymaga sprawdzenia.');
+  }
+  function bookUi(practiceId,iso,dateFrom,dateTo,hourFrom,hourTo) {
+    // Explicit native autoReserve opt-in controls this call; the optional
+    // form-preparation toggle is independent.
+    if (!allowed() || bookingUi || !document.body) return false;
+    if (typeof practiceId!=='string' || !/^[A-Za-z0-9_-]{1,90}$/.test(practiceId))
+      return false;
+    var target=bookingUiDate(iso);
+    if (!target || typeof dateFrom!=='string' || typeof dateTo!=='string' ||
+        target.day<dateFrom || target.day>dateTo ||
+        !/^\d{2}:\d{2}$/.test(hourFrom) || !/^\d{2}:\d{2}$/.test(hourTo) ||
+        target.hour<hourFrom || target.hour>hourTo) return false;
+    if (/platnosc|podsumowanie|zaplac|oplat/.test(norm(document.body.innerText||'')))
+      return false;
+    var match=bookingUiFindCard(target);
+    var heading=match ? null : bookingUiFindDateHeading(target);
+    if (!match && !heading) return false;
+    bookingUi={iso:iso,day:target.day,label:target.label,
+      hour:target.hour,started:Date.now(),done:false,
+      stage:match ? 'selected' : 'expanding'};
+    if (match) {
+      bookingUiReport('booking_ui_selected','Znaleziono pasującą kartę terminu.');
+      if (!match.already) match.node.click();
+    } else {
+      bookingUiReport('booking_ui_expanding','Rozwijam dokładnie wskazaną datę.');
+      heading.click();
+    }
+    // Angular dialog is asynchronous. A single interval observes it without
+    // re-clicking the card or issuing HTTP requests.
+    if (window.setInterval) {
+      var ticks=0;
+      var timer=window.setInterval(function(){
+        bookingUiTick();
+        if (!bookingUi || bookingUi.done || ++ticks>35) {
+          if (window.clearInterval) window.clearInterval(timer);
+        }
+      },700);
+    }
+    bookingUiTick();
+    return true;
+  }
+
   function diagnose() {
     var a = [];
     try { a = buttons(); } catch (_) {}
@@ -807,6 +1042,7 @@
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
+      bookingUiStage:bookingUi ? (bookingUi.done ? 'zakończony' : bookingUi.stage) : 'nieuruchomiony',
       nextDiagnostics:{
         firstStage:firstStage,
         rawCandidates:nextRaw.length,
@@ -859,7 +1095,7 @@
     scan();
     return true;
   }
-  window.__zlapFormPrep = {configure:configure, scan:scan,
+  window.__zlapFormPrep = {configure:configure, scan:scan, bookUi:bookUi,
     diagnose:diagnose, retry:retry, stop:function () {
     stopped = true;
     report('Lista terminów przejęta przez monitor.');

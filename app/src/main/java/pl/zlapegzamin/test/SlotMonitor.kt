@@ -163,7 +163,7 @@ class SlotMonitor(
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
                 val nextDiag = data.optJSONObject("nextDiagnostics") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.29\n" +
+                val report = "Automat formularza ZłapEgzamin 0.30\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +
@@ -215,6 +215,8 @@ class SlotMonitor(
                         ", nieaktywne: " + nextDiag.optInt("disabledCandidates") + "\n" +
                     "Tekst zakładki w menu: " +
                         (if (data.optBoolean("menuTextVisible")) "widoczny" else "nie wykryto") + "\n" +
+                    "Etap wyboru terminu w Portalu: " +
+                        data.optString("bookingUiStage", "nieuruchomiony").take(40) + "\n" +
                     "Etap: " + data.optString("last").take(180) + "\n" +
                     "Status odczytu: " + diagnostics.take(160)
                 onResult(report)
@@ -811,6 +813,60 @@ class SlotMonitor(
                         diagnostics = "Portal potwierdził odnowienie uwierzytelnienia."
                     }
                 }
+                "booking_ui_expanding" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        diagnostics = "Rozwijam właściwy dzień, szukam pasującej godziny i kategorii B."
+                        event("Rozwijanie daty pasującego egzaminu")
+                    }
+                }
+                "booking_ui_no_card" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        bookingInFlight = false
+                        prefs.edit().putString("booking_phase", "idle")
+                            .putString("booking_status",
+                                "Rozwinięto datę, ale nie ma jednoznacznej pasującej karty.")
+                            .remove("last_booking_key")
+                            .remove("last_booking_attempt_at")
+                            .apply()
+                        diagnostics = "Nie kliknięto egzaminu. Sprawdź listę terminów w Portalu."
+                        event(diagnostics)
+                        onUpdate()
+                    }
+                }
+                "booking_ui_selected" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        diagnostics = "Znaleziono pasującą kartę terminu; portal otwiera potwierdzenie."
+                        event("Wybrano kartę pasującego egzaminu")
+                    }
+                }
+                "booking_ui_confirming" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        diagnostics = "Potwierdzanie wybranego terminu w oknie portalu."
+                        event("Potwierdzanie wyboru egzaminu")
+                    }
+                }
+                "booking_ui_advanced" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        flagUncertainBooking(
+                            "Przeszło przez okno wyboru egzaminu. " +
+                            "Potwierdź rzeczywisty stan rezerwacji i ewentualną opłatę w portalu.",
+                            "", lastBookingDate)
+                    }
+                }
+                "booking_ui_problem" -> {
+                    if (bookingInFlight && bookingPhase == "creating" &&
+                        message.optString("date") == lastBookingDate) {
+                        flagUncertainBooking(
+                            "Zatrzymano wybór karty/okna: " +
+                            message.optString("detail").take(95) +
+                            ". Sprawdź rezerwacje w portalu.", "", lastBookingDate)
+                    }
+                }
                 "booking_started" -> {
                     bookingInFlight = true
                     diagnostics = "Próba zajęcia terminu: " + message.optString("date").take(24)
@@ -967,7 +1023,7 @@ class SlotMonitor(
         val recorded = prefs.edit().putString("last_booking_key", candidate.key)
             .putLong("last_booking_attempt_at", now)
             .putString("booking_phase", "creating")
-            .putString("booking_status", "Rozpoczęto tworzenie rezerwacji")
+            .putString("booking_status", "Rozpoczęto wybór terminu w Portalu")
             .putString("booking_date", date)
             .remove("booking_id")
             .commit()
@@ -991,21 +1047,31 @@ class SlotMonitor(
                 )
             }
         }, 120_000L)
+        // Use the real user-visible exam card and "Potwierdź wybrany egzamin"
+        // dialog. Do not submit an undocumented /Reservations/create request in
+        // parallel: that could reserve the same place twice.
         web.evaluateJavascript(
-            "Boolean(window.__zlapBook && window.__zlapBook(" +
-                JSONObject.quote(practiceId) + "," + JSONObject.quote(date) + "));"
+            "Boolean(window.__zlapFormPrep && window.__zlapFormPrep.bookUi && " +
+                "window.__zlapFormPrep.bookUi(" +
+                JSONObject.quote(practiceId) + "," + JSONObject.quote(date) + "," +
+                JSONObject.quote(dateFrom) + "," + JSONObject.quote(dateTo) + "," +
+                JSONObject.quote(bookingTimeFrom) + "," +
+                JSONObject.quote(bookingTimeTo) + "));"
         ) { result ->
             if (result != "true") {
                 bookingInFlight = false
-                val info = "Portal nie rozpoczął rezerwacji. Sprawdź sesję i zgodność terminu."
-                // The hook explicitly refused to start, so no remote POST was sent.
+                val info = "Nie widać jednoznacznej karty pasującego terminu " +
+                    "w Portalu. Otwórz listę terminów w zakładce Portal."
+                // No card was clicked, so no confirmation or booking attempt.
                 prefs.edit().putString("booking_phase", "idle")
-                    .putString("booking_status", info).apply()
+                    .putString("booking_status", info)
+                    .remove("last_booking_key")
+                    .remove("last_booking_attempt_at").apply()
                 diagnostics = info
-                event("Nie udało się rozpocząć autorezerwacji")
+                event("Autorezerwacja: brak pasującej karty w widoku")
                 onUpdate()
             } else {
-                event("Wysłano próbę autorezerwacji " + date.take(16))
+                event("Wybrano kartę terminu w Portalu " + date.take(16))
                 onUpdate()
             }
         }
