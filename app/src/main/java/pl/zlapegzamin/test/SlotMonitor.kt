@@ -100,6 +100,30 @@ class SlotMonitor(
         return true
     }
     val enabled: Boolean get() = prefs.getBoolean("enabled", true)
+    val portalFormPreparationEnabled: Boolean
+        get() = prefs.getBoolean("portal_form_preparation", false)
+    var portalFormPreparationStatus: String = "Wyłączone"
+        private set
+
+    /**
+     * Prepare the visible portal form using the authenticated user's own page.
+     * This sends no credentials and makes no HTTP requests of its own.
+     */
+    fun setPortalFormPreparationEnabled(value: Boolean) {
+        prefs.edit().putBoolean("portal_form_preparation", value).apply()
+        portalFormPreparationStatus = if (value) "Włączone – oczekiwanie na formularz" else "Wyłączone"
+        configurePortalFormPreparation()
+        onUpdate()
+    }
+
+    fun configurePortalFormPreparation() {
+        if (destroyed || !supported || !isPortal(web.url)) return
+        val on = if (portalFormPreparationEnabled) "true" else "false"
+        web.evaluateJavascript(
+            "Boolean(window.__zlapFormPrep && " +
+                "window.__zlapFormPrep.configure({enabled:" + on + "}));", null
+        )
+    }
     val backgroundSessionMaintenanceEnabled: Boolean
         get() = prefs.getBoolean("background_session_maintenance", true)
     fun setBackgroundSessionMaintenanceEnabled(value: Boolean) {
@@ -364,6 +388,9 @@ class SlotMonitor(
             )
             val script = activity.assets.open("slot-hook.js").bufferedReader().use { it.readText() }
             WebViewCompat.addDocumentStartJavaScript(web, script, origins)
+            val formPrepScript = activity.assets.open("portal-autostart.js")
+                .bufferedReader().use { it.readText() }
+            WebViewCompat.addDocumentStartJavaScript(web, formPrepScript, origins)
             supported = true
             lastError = ""
         } catch (_: Exception) {
@@ -377,6 +404,7 @@ class SlotMonitor(
         // Main-frame navigations replace the JS context. Check the actual page
         // text natively, rather than relying on a volatile JS login flag.
         inspectSessionState()
+        configurePortalFormPreparation()
         if (!requestReady) return
         val uri = Uri.parse(url)
         val host = uri.host?.lowercase(Locale.ROOT) ?: return
@@ -564,8 +592,16 @@ class SlotMonitor(
         try {
             val message = JSONObject(raw)
             when (message.optString("kind")) {
+                "form_prep" -> {
+                    portalFormPreparationStatus = message.optString("status").take(160)
+                }
                 "native_request_ready" -> {
                     val captured = NativeExamReader.capture(message)
+                    if (captured != null && isPortal(web.url)) {
+                        web.evaluateJavascript(
+                            "window.__zlapFormPrep && window.__zlapFormPrep.stop();", null
+                        )
+                    }
                     if (captured != nativeRequest) nativeRequestVersion++
                     nativeRequest = captured
                     nativeSetupIssue = if (captured != null) "" else {
