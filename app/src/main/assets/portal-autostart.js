@@ -84,6 +84,7 @@
     return true;
   }
   function selectNative(reason, label, match) {
+    if (changed[reason]) return false;
     var fields = Array.from(document.querySelectorAll('select')).filter(visible)
       .filter(function (el) { return label.test(fieldLabel(el)); });
     if (fields.length !== 1) return false;
@@ -94,6 +95,7 @@
     return matches.length === 1 && updateSelect(fields[0], matches[0], reason);
   }
   function chooseSingleProfile() {
+    if (changed['jedyny profil PKK']) return false;
     var fields = Array.from(document.querySelectorAll('select')).filter(visible)
       .filter(function (el) { return /(profil|pkk)/.test(fieldLabel(el)); });
     if (fields.length !== 1) return false;
@@ -101,11 +103,18 @@
       return !o.disabled && !!o.value && !/^(wybierz|select|--)/.test(norm(o.text));
     });
     var pkk = options.filter(function (o) { return /pkk|\d{8,}/.test(norm(o.text)); });
-    if (pkk.length === 1) return updateSelect(fields[0], pkk[0], 'jedyny profil PKK');
+    if (pkk.length === 1) {
+      if (fields[0].value === pkk[0].value) {
+        changed['jedyny profil PKK'] = true;
+        return false;
+      }
+      return updateSelect(fields[0], pkk[0], 'jedyny profil PKK');
+    }
     if (pkk.length > 1) report('Kilka profili PKK — wybierz właściwy raz w Portalu.');
     return false;
   }
   function openCombobox(reason, label) {
+    if (changed[reason]) return false;
     var els = Array.from(document.querySelectorAll(
       '[role="combobox"], mat-select, .mat-mdc-select, .ng-select-container'))
       .filter(visible).filter(function (el) { return label.test(fieldLabel(el)); });
@@ -171,7 +180,7 @@
         /^(praktyka|praktyczny)$/)) return;
 
     // Only exact, labelled UI targets. Never click generic "Wybierz" or a slot.
-    if (/rodzaj profilu|profil pkk|profil pkz/.test(body) &&
+    if (!changed['profil PKK'] && /rodzaj profilu|profil pkk|profil pkz/.test(body) &&
         uniqueClick(function (s) { return s === 'pkk'; }, 'profil PKK')) return;
     if (openCombobox('osrodek', /(osrodek|word|mord|centrum egzamin)/)) return;
     if (openCombobox('kategoria', /kategoria/)) return;
