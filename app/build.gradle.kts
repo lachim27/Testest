@@ -10,7 +10,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.32-verified-practical-radio"
+        versionName = "0.33-monitor-capture-no-premature-stop"
     }
     val signingFile = System.getenv("ZLAP_KEYSTORE")
     if (!signingFile.isNullOrBlank()) {
