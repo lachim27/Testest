@@ -295,7 +295,7 @@
   function chooseProfileType() {
     if (changed['profil PKK']) return false;
     var body = norm(document.body && document.body.innerText || '');
-    if (!/wybor rodzaju profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body)) return false;
+    if (!/wybor rodzaju profilu|wybierz rodzaj profilu|profil kandydata na kierowce|profil pkz|wybierz profil/.test(body)) return false;
     var candidates = Array.from(document.querySelectorAll(
       'input[type="radio"], [role="radio"], label')).filter(visible)
       .filter(function(el) {
