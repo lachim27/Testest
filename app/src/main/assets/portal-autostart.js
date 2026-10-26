@@ -606,6 +606,29 @@
     } catch (_) {}
     return false;
   }
+  function practicalRadioSelectedName() {
+    try {
+      var inputs=Array.from(document.querySelectorAll('input[type="radio"], [role="radio"]'));
+      var chosen=inputs.filter(function(input) {
+        return input.checked===true ||
+          (input.getAttribute && input.getAttribute('aria-checked')==='true');
+      });
+      var typeMap={
+        'egzamin praktyczny':'praktyczny',
+        'egzamin teoretyczny':'teoretyczny',
+        'egzamin laczony (teoria + praktyka)':'łączony',
+        'wyswietl wszystkie typy egzaminu':'wszystkie'
+      };
+      var matches=chosen.map(function(input) {
+        var labels=practicalRadioLabel(input);
+        for(var i=0;i<labels.length;i++) {
+          if(typeMap[labels[i]]) return typeMap[labels[i]];
+        }
+        return '';
+      }).filter(Boolean);
+      return matches.length===1 ? matches[0] : 'nieodczytany';
+    } catch (_) {return 'nieodczytany';}
+  }
   function choosePracticalExamRadio() {
     if (practicalRadioVerified()) {
       changed['rodzaj: egzamin praktyczny'] = true;
@@ -1184,7 +1207,9 @@
           practicalRadioVerified() : !!changed['rodzaj: egzamin praktyczny'],
         practicalRadioScreen:practicalRadioScreen(body),
         practicalRadioAttempted:!!changed['proba: egzamin praktyczny'],
-        practicalRadioVerified:practicalRadioVerified()
+        practicalRadioVerified:practicalRadioVerified(),
+        practicalRadioSelected:practicalRadioScreen(body) ?
+          practicalRadioSelectedName() : 'poza ekranem'
       },
       wizard:elements.length>fields.other,
       controls:controls, fields:fields,
