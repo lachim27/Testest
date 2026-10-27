@@ -233,3 +233,15 @@ Analiza kodu ujawniła, że w 0.34 **celowo pomijaliśmy gesty podczas widoczneg
 Pauza jest utrzymywana do wybrania istniejącej opcji **Ponów automat** lub ponownego załadowania dokumentu strony: `configure({enabled:true})` i cykliczny skan nie znoszą już ręcznego wstrzymania, nawet kiedy nadal widać formularz. **Ustawienie „Automatyczne wypełnianie” pozostaje WŁĄCZONE**. Pauzowane jest wyłącznie automatyczne sterowanie formularzem w widocznej stronie; monitor odczytu terminów i osobna autorezerwacja nie zostały zmienione. Raport pokazuje „Wstrzymany przez ręczne przewijanie menu: true”, również podczas przeglądania formularza. Przy kolejnym starcie formularza (nowy dokument) automat zachowuje dotychczasowe funkcje.
 
 **Testy: 67/67** symulowanych JS, w tym natywne wywołanie pauzy (nawet bez `touchmove`), pauza utrzymująca się na ekranie czterech radio, przejście po kliknięciu „Ponów” oraz brak dodatkowych kliknięć po dotknięciu. Android jest kompilowany przez GitHub Actions. Działanie fizycznego przewijania wymaga sprawdzenia przez użytkownika na telefonie.
+
+## 0.36 — drugi przycisk „Następny” po zaznaczeniu egzaminu praktycznego
+
+Po 0.35 użytkownik potwierdził, że formularz zatrzymuje się po zaznaczeniu praktycznego nawet przy **wyłączonej autorezerwacji**. Wcześniejszy raport wskazywał `praktyczny POTWIERDZONY: true`, `dalej=1`, ale status „Brak kolejnego bezpiecznego kroku”.
+
+**Przyczyna:** dotychczasowy automat znał „Następny” tylko na pierwszym ekranie „Profil i WORD”. Drugi ekran „Wybór rodzaju egzaminu” wybierał praktyczny, ale **nie przechodził przyciskiem „Następny →”** do listy.
+
+W 0.36 na ekranie z czterema radiobuttonami automat najpierw weryfikuje, że **praktyczny jest rzeczywiście wybrany**, uzupełnia datę początkową wyłącznie jeśli potrafi ją bezpiecznie rozpoznać jako pojedynczy input[type=date], po czym naciska **jeden aktywny „Następny”** (dopuszcza strzałkę „→”). Nie klika „Potwierdź” ani płatności i nie wybiera konkretnego terminu. Jeśli przycisk jest nieaktywny/niejednoznaczny, raportuje brak bezpiecznego przejścia. Nie ignoruje widoku tylko dlatego, że portal wstępnie wyświetlił godziny lub pobrał dane API. W raporcie: **„Drugi etap (praktyczny → Następny): true/false”**.
+
+**Ważne:** automatyczne wypełnianie formularza działa **niezależnie od osobnego przełącznika autorezerwacji**. Przy wyłączonej autorezerwacji można przejść do listy i ją odczytać, ale aplikacja nie wybiera karty egzaminu i nie potwierdza rezerwacji.
+
+Zachowano priorytet ręcznego przewijania z 0.35: po przeciągnięciu strony palcem nawigacyjne kliknięcia są wstrzymane do „Ponów automat” albo załadowania nowego dokumentu. **73/73 symulowane testy JS przeszły**, w tym drugi przycisk Następny, nieaktywny/powielony przycisk, błędną kategorię egzaminu, uprzednio pobrane godziny i gest ręcznego przewijania. Realne zachowanie wymaga próby na zalogowanym portalu.
