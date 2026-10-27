@@ -129,6 +129,20 @@ class SlotMonitor(
         onUpdate()
     }
 
+    /**
+     * Called only after a vertical drag in the native Portal WebView.
+     * Android gesture detection is more reliable than JS touchmove/isTrusted
+     * on some Android System WebView versions. Return is deliberately ignored
+     * because neither this helper nor the Activity consumes the touch event.
+     */
+    fun pausePortalFormPreparationForManualScroll() {
+        if (destroyed || !supported || !portalFormPreparationEnabled || !isPortal(web.url)) return
+        web.evaluateJavascript(
+            "Boolean(window.__zlapFormPrep && window.__zlapFormPrep.pauseForManualScroll && " +
+                "window.__zlapFormPrep.pauseForManualScroll());", null
+        )
+    }
+
     fun configurePortalFormPreparation() {
         if (destroyed || !supported || !isPortal(web.url)) return
         val on = if (portalFormPreparationEnabled) "true" else "false"
@@ -163,7 +177,7 @@ class SlotMonitor(
                 val otherTags = data.optJSONObject("otherTags") ?: JSONObject()
                 val steps = data.optJSONObject("setupSteps") ?: JSONObject()
                 val nextDiag = data.optJSONObject("nextDiagnostics") ?: JSONObject()
-                val report = "Automat formularza ZłapEgzamin 0.34\n" +
+                val report = "Automat formularza ZłapEgzamin 0.35\n" +
                     "Monitor: " + (if (enabled) "włączony" else "wyłączony") + "\n" +
                     "Automat w Opcjach: " +
                         (if (portalFormPreparationEnabled) "WŁĄCZONY" else "WYŁĄCZONY") + "\n" +

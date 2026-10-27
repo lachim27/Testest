@@ -766,13 +766,25 @@
       (/wybor terminu egzaminu dla/.test(body) &&
        /wybor rodzaju egzaminu/.test(body));
   }
+  function pauseForManualScroll() {
+    // Explicit manual takeover is persistent in the current document and
+    // includes BOTH the homepage and the actual exam-type wizard. In 0.34
+    // the latter was accidentally excluded: manualBrowsing always stayed false
+    // precisely where the user reported the snap-to-top behavior.
+    if (!manualBrowsing) {
+      manualBrowsing = true;
+      pending = null;
+      pendingSince = 0;
+      report('Ręczne przewijanie Portalu: nie wykonuję kolejnych kliknięć. ' +
+        'Automatyczne wypełnianie pozostaje włączone; przycisk Ponów wznawia nawigację.');
+    }
+    return manualBrowsing;
+  }
   function pauseOnManualScroll(event) {
-    // Synthetic scrolls and focus scrolls produced by the portal or its
-    // Angular controls must not disable automation. Only a trusted, direct
-    // user gesture (touch scroll or mouse wheel) counts.
+    // Trusted user gesture: do not interpret JS-generated scrolls or
+    // focus-driven viewport changes as manual takeover.
     if (!event || event.isTrusted !== true || !document.body) return;
-    var body = norm((document.body.innerText || '').slice(0, 20000));
-    if (!bookingWizardVisible(body)) manualBrowsing = true;
+    pauseForManualScroll();
   }
   function scan() {
     if (!settings.enabled || stopped || !allowed() || !document.body) return;
@@ -789,15 +801,10 @@
       report('Przerwano na etapie rezerwacji lub płatności.');
       return;
     }
-    if (manualBrowsing && !bookingWizardVisible(body)) {
-      report('Ręczne przewijanie menu — automat nie klika ani nie przenosi strony. ' +
-        'Wypełnianie wznowi się po otwarciu formularza rezerwacji.');
-      return;
-    }
-    if (manualBrowsing && bookingWizardVisible(body)) {
-      manualBrowsing = false;
-      report('Otworzono formularz rezerwacji — wznawiam automatyczne wypełnianie.');
-    }
+    // Manual scrolling wins on ALL portal screens, including the booking
+    // wizard. Never resume solely because its form fields are visible:
+    // that was the exact bug in v0.34. Retry or a full page reload resumes.
+    if (manualBrowsing) return;
     // Info-Kierowca can fetch term slots already when "all exam types"
     // is selected. Even if the page contains dates, the four-radio screen
     // MUST be handled first; capturing/reading terms does not complete it.
@@ -1279,7 +1286,8 @@
     return true;
   }
   window.__zlapFormPrep = {configure:configure, scan:scan, bookUi:bookUi,
-    diagnose:diagnose, retry:retry, stop:function () {
+    diagnose:diagnose, retry:retry, pauseForManualScroll:pauseForManualScroll,
+    stop:function () {
     // Defensive check: third-party/native signals must never prematurely
     // stop form preparation while the practical radio is still missing.
     var body = norm(document.body && document.body.innerText || '');
