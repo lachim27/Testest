@@ -1054,11 +1054,31 @@ function practicalScreen(opts={}) {
     option('Wyświetl wszystkie typy egzaminu','all')
   ];
   if(opts.duplicated)items.push(option('Egzamin praktyczny','practical-duplicate'));
+  const nextButtons=[];
+  if(opts.nextLabel){
+    for(let i=0;i<(opts.nextButtonCount||1);i++){
+      nextButtons.push({
+        tagName:'BUTTON',nodeType:1,isConnected:true,
+        disabled:!!opts.nextDisabled,parentElement:null,
+        innerText:opts.nextLabel,textContent:opts.nextLabel,
+        getAttribute(){return null;},
+        getClientRects(){return [1];},
+        contains(other){return this===other;},
+        click(){
+          if(this.disabled)throw Error('Disabled next button clicked');
+          clicked.push('next');
+          if(!opts.noResultAfterNext)
+            doc.body.innerText='Dostępne terminy egzaminów 17/12/2026 06:00';
+        }
+      });
+    }
+  }
   const doc={
     body:{innerText:bodyText},documentElement:null,addEventListener(){},
     querySelector(){return null;},
     querySelectorAll(q) {
       if(q==='input[type="radio"], [role="radio"]')return items.map(i=>i.radio);
+      if(q.startsWith('button, a, [role="button"]'))return nextButtons;
       if(q.startsWith('label, [role="radio"]'))return items;
       if(q==='input[type="radio"], input[type="date"]')return items.map(i=>i.radio);
       return [];
@@ -1285,4 +1305,68 @@ test('explicit retry resumes form processing following native pause',()=>{
   f.wnd.__zlapFormPrep.retry();
   assert.deepEqual(f.clicked,['practical']);
   assert.equal(f.wnd.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+});
+
+
+test('after practical is selected, second wizard clicks only safe Następny to show slots',()=>{
+  const f=practicalScreen({nextLabel:'Następny →'});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  f.tick();f.wnd.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,['practical','next']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.examNextStep,true);
+  f.tick();f.wnd.__zlapFormPrep.scan();
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,true);
+  assert.deepEqual(f.clicked,['practical','next']);
+});
+
+test('preloaded slot hours on exam-kind page do not stop the wizard before Następny',()=>{
+  const bodyText='Wybór terminu egzaminu dla: MORD Kraków, ul. Nowohucka 33a. '+
+    'Wybór rodzaju egzaminu. Egzamin praktyczny. Wyświetl wszystkie typy egzaminu. '+
+    'Dostępne terminy egzaminów 08:00';
+  const f=practicalScreen({bodyText,nextLabel:'Następny →',practicalSelected:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['next']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.examNextStep,true);
+});
+
+test('never click second-stage next if practical checkbox is not selected',()=>{
+  const f=practicalScreen({nextLabel:'Następny →',misroute:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  f.tick();f.wnd.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,true);
+});
+
+test('second-stage next does not click disabled, duplicate or unrelated controls',()=>{
+  for(const opts of [
+    {nextLabel:'Następny →',nextDisabled:true},
+    {nextLabel:'Następny →',nextButtonCount:2},
+    {nextLabel:'Potwierdź i przejdź dalej'}
+  ]){
+    const f=practicalScreen({...opts,practicalSelected:true});
+    f.wnd.__zlapFormPrep.configure({enabled:true});
+    f.tick();f.wnd.__zlapFormPrep.scan();
+    assert.deepEqual(f.clicked,[]);
+    assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.examNextStep,false);
+  }
+});
+
+test('manual scroll pause prevents Next navigation even with practical confirmed',()=>{
+  const f=practicalScreen({nextLabel:'Następny →',practicalSelected:true});
+  f.wnd.__zlapFormPrep.pauseForManualScroll();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  f.tick();f.wnd.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,[]);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+  f.wnd.__zlapFormPrep.retry();
+  assert.deepEqual(f.clicked,['next']);
+});
+
+test('without Następny on second stage reports missing control rather than booking',()=>{
+  const f=practicalScreen({practicalSelected:true});
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+  assert.match(f.wnd.__zlapFormPrep.diagnose().last,/nie widze jednego aktywnego|nie widzę jednego aktywnego/i);
 });
