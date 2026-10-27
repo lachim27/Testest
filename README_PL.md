@@ -218,3 +218,18 @@ Zgłoszenie: gdy w Opcjach aktywne jest „Automatyczne wypełnianie formularza�
 0.34 wprowadza priorytet **świadomego ręcznego przeglądania** portalu. Tylko zaufane zdarzenia `touchmove` lub `wheel` w zwykłym menu/przed formularzem powodują trwałe (dla bieżącego ekranu) wstrzymanie **automatycznych kliknięć nawigacyjnych**. Samo programowe przewinięcie ani syntetyczny event nie aktywują pauzy. Nie blokuje to zwykłego przewijania przez przeglądarkę, nie odświeża ani nie przemieszcza strony. **Ustawienie „Automatyczne wypełnianie” pozostaje włączone.** Gdy użytkownik otworzy właściwy formularz rezerwacji (Profil i WORD albo Wybór rodzaju egzaminu), auto-wypełnianie automatycznie się wznawia. Istniejący przycisk ponowienia automatu w Opcjach również usuwa ręczną pauzę.
 
 Nie zmieniono wykrywania praktycznego, filtrów dat/godzin, pobierania terminów, limitów zapytań ani etapów autorezerwacji; żadnych dodatkowych żądań do portalu. Raport diagnostyczny: **Wstrzymany przez ręczne przewijanie menu: true/false**. 63/63 testy JS przeszły: gest palcem, scroll myszką, syntetyczny scroll nie zatrzymujący automatu, ponowienie oraz wznowienie po otwarciu formularza. Rzeczywiste zachowanie WebView na telefonie wymaga testu użytkownika.
+
+## 0.35 — naprawa cofania strony podczas przewijania także wewnątrz formularza
+
+Po 0.34 rzeczywisty raport użytkownika pokazał:
+- **Wstrzymany przez ręczne przewijanie menu: false**
+- **Ekran wyboru rodzaju egzaminu: true, praktyczny POTWIERDZONY: true**
+- **Zatrzymany: false** — mimo ręcznego przewijania użytkownik trafiał na górę.
+
+Analiza kodu ujawniła, że w 0.34 **celowo pomijaliśmy gesty podczas widocznego formularza** (`if (!bookingWizardVisible(body)) manualBrowsing=true`) oraz po pojawieniu się formularza automatycznie kasowaliśmy pauzę. Dla rzeczywistego etapu „Wybór rodzaju egzaminu” pauza z definicji nigdy nie mogła być aktywna.
+
+**W 0.35 ręczne pionowe przeciągnięcie priorytetowo wstrzymuje automatyczne kliknięcia bez względu na ekran**, zarówno w menu, jak i na etapie „Profil i WORD” i „Wybór rodzaju egzaminu”. Aby obejść niejednolity sposób emisji JS `touchmove/isTrusted` w Android WebView, **DashboardActivity** wykrywa rzeczywistą pionową różnicę gestu (>14 dp, dominująca oś Y) przy użyciu natywnego `WebView.setOnTouchListener`, po czym wywołuje w skrypcie `pauseForManualScroll()`. Listener **zawsze zwraca `false`**, więc nie blokuje natywnego przewijania. Pozostawiono także nasłuchiwanie zaufanych `touchmove/wheel` w JavaScript.
+
+Pauza jest utrzymywana do wybrania istniejącej opcji **Ponów automat** lub ponownego załadowania dokumentu strony: `configure({enabled:true})` i cykliczny skan nie znoszą już ręcznego wstrzymania, nawet kiedy nadal widać formularz. **Ustawienie „Automatyczne wypełnianie” pozostaje WŁĄCZONE**. Pauzowane jest wyłącznie automatyczne sterowanie formularzem w widocznej stronie; monitor odczytu terminów i osobna autorezerwacja nie zostały zmienione. Raport pokazuje „Wstrzymany przez ręczne przewijanie menu: true”, również podczas przeglądania formularza. Przy kolejnym starcie formularza (nowy dokument) automat zachowuje dotychczasowe funkcje.
+
+**Testy: 67/67** symulowanych JS, w tym natywne wywołanie pauzy (nawet bez `touchmove`), pauza utrzymująca się na ekranie czterech radio, przejście po kliknięciu „Ponów” oraz brak dodatkowych kliknięć po dotknięciu. Android jest kompilowany przez GitHub Actions. Działanie fizycznego przewijania wymaga sprawdzenia przez użytkownika na telefonie.
