@@ -805,12 +805,33 @@
     // wizard. Never resume solely because its form fields are visible:
     // that was the exact bug in v0.34. Retry or a full page reload resumes.
     if (manualBrowsing) return;
-    // Info-Kierowca can fetch term slots already when "all exam types"
-    // is selected. Even if the page contains dates, the four-radio screen
-    // MUST be handled first; capturing/reading terms does not complete it.
-    if (practicalRadioScreen(body) && !practicalRadioVerified()) {
-      choosePracticalExamRadio();
-      return;
+    // Handle BOTH actions of the second wizard stage: select PRACTICAL
+    // radio, then use its exact "Następny" wizard-navigation button.
+    // This is preparation, independent from autoReserve and booking/payments.
+    // Readiness of OneCenterExam or a date in the body does NOT itself mean
+    // the user has progressed past this stage.
+    if (practicalRadioScreen(body)) {
+      if (!practicalRadioVerified()) {
+        choosePracticalExamRadio();
+        return;
+      }
+      if (fillDateFrom()) return;
+      if (!changed['przejście Rodzaj egzaminu']) {
+        if (uniqueClick(function(txt) {
+          return nextWizardLabel(txt);
+        }, 'przejście Rodzaj egzaminu')) {
+          report('Wybrano egzamin praktyczny i naciśnięto Następny. ' +
+            'Oczekuję na listę terminów bez dokonywania rezerwacji.');
+          return;
+        }
+        report('Egzamin praktyczny zaznaczony, ale nie widzę jednego aktywnego ' +
+          'przycisku Następny na drugim etapie. Sprawdź Portal.');
+        return;
+      }
+      if (!resultsShown()) {
+        report('Następny kliknięty. Oczekuję na listę terminów.');
+        return;
+      }
     }
     if (resultsShown()) {
       stopped = true;
@@ -1244,6 +1265,7 @@
         specificWord:!!changed['wybór WORD'],
         centerNowohucka:!!changed['ośrodek Kraków'],
         nextStep:!!changed['przejście Profil i WORD'],
+        examNextStep:!!changed['przejście Rodzaj egzaminu'],
         practicalRadio:practicalRadioScreen(body) ?
           practicalRadioVerified() : !!changed['rodzaj: egzamin praktyczny'],
         practicalRadioScreen:practicalRadioScreen(body),
