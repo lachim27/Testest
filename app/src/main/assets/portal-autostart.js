@@ -15,6 +15,10 @@
   var clicks = 0;
   var lastReport = '';
   var maxClicks = 14;
+  // A user swipe in the portal menu takes precedence over auto-navigation.
+  // Keep this in the JS realm through client-side route changes until the
+  // user opens the actual exam-booking wizard or explicitly taps Retry.
+  var manualBrowsing = false;
 
   function norm(s) {
     return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -757,6 +761,19 @@
     var strong = /podsumowanie rezerwacji|metoda platnosci|potwierdz rezerwacje|zaplac|numer rezerwacji/;
     return strong.test(body) || /oplac egzamin/.test(relevant);
   }
+  function bookingWizardVisible(body) {
+    return onProfileWordStep(body) || practicalRadioScreen(body) ||
+      (/wybor terminu egzaminu dla/.test(body) &&
+       /wybor rodzaju egzaminu/.test(body));
+  }
+  function pauseOnManualScroll(event) {
+    // Synthetic scrolls and focus scrolls produced by the portal or its
+    // Angular controls must not disable automation. Only a trusted, direct
+    // user gesture (touch scroll or mouse wheel) counts.
+    if (!event || event.isTrusted !== true || !document.body) return;
+    var body = norm((document.body.innerText || '').slice(0, 20000));
+    if (!bookingWizardVisible(body)) manualBrowsing = true;
+  }
   function scan() {
     if (!settings.enabled || stopped || !allowed() || !document.body) return;
     if (clicks >= maxClicks) { report('Zatrzymano: za dużo kroków. Sprawdź Portal.'); return; }
@@ -771,6 +788,15 @@
       stopped = true;
       report('Przerwano na etapie rezerwacji lub płatności.');
       return;
+    }
+    if (manualBrowsing && !bookingWizardVisible(body)) {
+      report('Ręczne przewijanie menu — automat nie klika ani nie przenosi strony. ' +
+        'Wypełnianie wznowi się po otwarciu formularza rezerwacji.');
+      return;
+    }
+    if (manualBrowsing && bookingWizardVisible(body)) {
+      manualBrowsing = false;
+      report('Otworzono formularz rezerwacji — wznawiam automatyczne wypełnianie.');
     }
     // Info-Kierowca can fetch term slots already when "all exam types"
     // is selected. Even if the page contains dates, the four-radio screen
@@ -1190,6 +1216,7 @@
       script:true, enabled:!!settings.enabled, stopped:!!stopped,
       pending:pending ? (pending==='numer PKK'?'profil':pending) : '',
       actions:clicks, last:lastReport,
+      manualBrowsingPaused:manualBrowsing,
       bookingUiStage:bookingUi ? (bookingUi.done ? 'zakończony' : bookingUi.stage) : 'nieuruchomiony',
       nextDiagnostics:{
         firstStage:firstStage,
@@ -1231,6 +1258,7 @@
   }
   function retry() {
     stopped = false; pending = null; pendingSince = 0; clicks = 0; lastAction = 0;
+    manualBrowsing = false;
     changed = {}; awaitingResults = false; lastReport = '';
     report('Ponowna próba przygotowania formularza.');
     scan();
@@ -1267,6 +1295,13 @@
     report('Lista terminów przejęta przez monitor.');
     return true;
   }};
+  // Capture swipes on the entire portal page (including nested scroll areas)
+  // without canceling native touch scrolling. Manual navigation should work
+  // even with the automatic form preparation toggle left enabled.
+  document.addEventListener('touchmove', pauseOnManualScroll,
+    {capture:true, passive:true});
+  document.addEventListener('wheel', pauseOnManualScroll,
+    {capture:true, passive:true});
   document.addEventListener('DOMContentLoaded', scan);
   window.setInterval(scan, 2000);
   if (window.MutationObserver) {
