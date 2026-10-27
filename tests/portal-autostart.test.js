@@ -9,6 +9,7 @@ const source = fs.readFileSync(
 function fixture(bodyText, labels, changes = {}) {
   const clicked = [];
   const events = [];
+  const listeners = {};
   const buttons = labels.map(value => ({
     isConnected:true, disabled:false, parentElement:null, nodeType:1,
     innerText:value, textContent:value, getAttribute(){return null;},
@@ -17,7 +18,12 @@ function fixture(bodyText, labels, changes = {}) {
   const document = {
     body:{innerText:bodyText},
     documentElement:null,
-    addEventListener(){},
+    addEventListener(type,fn){
+      (listeners[type]||(listeners[type]=[])).push(fn);
+    },
+    fire(type,event){
+      (listeners[type]||[]).forEach(fn=>fn(event));
+    },
     querySelectorAll(selector) {
       if (selector.startsWith('button,')) return buttons;
       return [];
@@ -38,7 +44,7 @@ function fixture(bodyText, labels, changes = {}) {
   setup(window,document,location,
     () => ({display:'block',visibility:'visible'}),
     {escape:value=>value},class {},class {});
-  return {window,clicked,events};
+  return {window,document,clicked,events};
 }
 
 test('off by default, booking-start UI is untouched',()=>{
@@ -1178,4 +1184,63 @@ test('prefetched slots do not override combined-exam safety guard',()=>{
   f.wnd.__zlapFormPrep.scan();
   assert.equal(f.wnd.__zlapFormPrep.diagnose().stopped,true);
   assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioVerified,false);
+});
+
+
+test('trusted phone swipe pauses menu auto-navigation without disabling option',()=>{
+  const f=fixture('Moje wnioski i rezerwacje. USŁUGI',
+    ['Zarezerwuj termin egzaminu']);
+  f.document.fire('touchmove',{isTrusted:true});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+  const diag=f.window.__zlapFormPrep.diagnose();
+  assert.equal(diag.enabled,true);
+  assert.equal(diag.manualBrowsingPaused,true);
+  f.window.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,[]);
+});
+
+test('mouse-wheel scrolling also yields manual menu control',()=>{
+  const f=fixture('Moje wnioski i rezerwacje. USŁUGI',
+    ['Zarezerwuj termin egzaminu']);
+  f.document.fire('wheel',{isTrusted:true,deltaY:105});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+});
+
+test('synthetic scroll is not treated as manual user browsing',()=>{
+  const f=fixture('Konto użytkownika. Usługi:',
+    ['Zarezerwuj termin']);
+  f.document.fire('touchmove',{isTrusted:false});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['Zarezerwuj termin']);
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+});
+
+test('opening actual booking wizard resumes filling after manual menu swipe',()=>{
+  const f=fixture('Moje wnioski i rezerwacje. USŁUGI',[]);
+  f.document.fire('touchmove',{isTrusted:true});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+  f.document.body.innerText='Wybór rodzaju profilu. Wybór osrodka egzaminacyjnego WORD';
+  f.window.__zlapFormPrep.scan();
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+  assert.equal(f.window.__zlapFormPrep.diagnose().enabled,true);
+});
+
+test('explicit Retry releases manual scrolling pause and restarts autofill',()=>{
+  const f=fixture('Moje wnioski i rezerwacje. USŁUGI',[]);
+  f.document.fire('touchmove',{isTrusted:true});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+  f.window.__zlapFormPrep.retry();
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+});
+
+test('touch scrolling inside booking wizard does not suppress form preparation',()=>{
+  const f=fixture('Wybór rodzaju profilu. Wybór osrodka egzaminacyjnego WORD',[]);
+  f.document.fire('touchmove',{isTrusted:true});
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
 });
