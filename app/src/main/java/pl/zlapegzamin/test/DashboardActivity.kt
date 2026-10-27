@@ -20,6 +20,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -33,6 +34,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.abs
 
 class DashboardActivity : Activity() {
     private val uiPrefs by lazy { getSharedPreferences("zlap_ui_v1", MODE_PRIVATE) }
@@ -55,6 +57,9 @@ class DashboardActivity : Activity() {
     private lateinit var portalToolbar: LinearLayout
     private lateinit var monitor: SlotMonitor
     private var tab = "start"
+    private var portalTouchStartX = 0f
+    private var portalTouchStartY = 0f
+    private var portalDragReported = false
     private var calendarMonthOffset = 0
     private val uiHandler = Handler(Looper.getMainLooper())
     private var rateTickerEnabled = false
@@ -258,6 +263,32 @@ class DashboardActivity : Activity() {
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webChromeClient = WebChromeClient()
+            // Android can deliver vertical WebView drags even if JavaScript
+            // does not expose a trusted touchmove to the injected helper.
+            // Returning FALSE is essential: WebView handles real scrolling.
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        portalTouchStartX = event.x
+                        portalTouchStartY = event.y
+                        portalDragReported = false
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dy = abs(event.y - portalTouchStartY)
+                        val dx = abs(event.x - portalTouchStartX)
+                        if (!portalDragReported && tab == "portal" &&
+                            dy > dp(14).toFloat() && dy > dx) {
+                            portalDragReported = true
+                            if (::monitor.isInitialized)
+                                monitor.pausePortalFormPreparationForManualScroll()
+                        }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        portalDragReported = false
+                    }
+                }
+                false
+            }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
