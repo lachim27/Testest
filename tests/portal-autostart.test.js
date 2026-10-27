@@ -1218,14 +1218,14 @@ test('synthetic scroll is not treated as manual user browsing',()=>{
   assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
 });
 
-test('opening actual booking wizard resumes filling after manual menu swipe',()=>{
+test('entering the wizard must not cancel a user scroll pause on same document',()=>{
   const f=fixture('Moje wnioski i rezerwacje. USŁUGI',[]);
   f.document.fire('touchmove',{isTrusted:true});
   f.window.__zlapFormPrep.configure({enabled:true});
   assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
   f.document.body.innerText='Wybór rodzaju profilu. Wybór osrodka egzaminacyjnego WORD';
   f.window.__zlapFormPrep.scan();
-  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
   assert.equal(f.window.__zlapFormPrep.diagnose().enabled,true);
 });
 
@@ -1238,9 +1238,51 @@ test('explicit Retry releases manual scrolling pause and restarts autofill',()=>
   assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
 });
 
-test('touch scrolling inside booking wizard does not suppress form preparation',()=>{
+test('touch scrolling inside booking wizard pauses automatic clicks',()=>{
   const f=fixture('Wybór rodzaju profilu. Wybór osrodka egzaminacyjnego WORD',[]);
   f.document.fire('touchmove',{isTrusted:true});
   f.window.__zlapFormPrep.configure({enabled:true});
-  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+});
+
+
+test('native Android bridge can pause even if WebView does not deliver trusted touchmove',()=>{
+  const f=fixture('Wybór rodzaju profilu. Wybór osrodka egzaminacyjnego WORD',[]);
+  const value=f.window.__zlapFormPrep.pauseForManualScroll();
+  assert.equal(value,true);
+  f.window.__zlapFormPrep.configure({enabled:true});
+  assert.equal(f.window.__zlapFormPrep.diagnose().enabled,true);
+  assert.equal(f.window.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+});
+
+test('page configure call cannot unpause manual scrolling while still on exam screen',()=>{
+  const f=practicalScreen();
+  f.wnd.__zlapFormPrep.pauseForManualScroll();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  f.wnd.__zlapFormPrep.scan();
+  assert.deepEqual(f.clicked,[]);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().setupSteps.practicalRadioVerified,false);
+});
+
+test('manual gesture after practical selection prevents further automatic clicks',()=>{
+  const f=practicalScreen();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  f.wnd.__zlapFormPrep.pauseForManualScroll();
+  f.tick();
+  f.wnd.__zlapFormPrep.scan();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().manualBrowsingPaused,true);
+});
+
+test('explicit retry resumes form processing following native pause',()=>{
+  const f=practicalScreen();
+  f.wnd.__zlapFormPrep.pauseForManualScroll();
+  f.wnd.__zlapFormPrep.configure({enabled:true});
+  assert.deepEqual(f.clicked,[]);
+  f.wnd.__zlapFormPrep.retry();
+  assert.deepEqual(f.clicked,['practical']);
+  assert.equal(f.wnd.__zlapFormPrep.diagnose().manualBrowsingPaused,false);
 });
